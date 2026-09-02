@@ -93,6 +93,21 @@ export function updateRow<T extends Record<string, unknown>>(
   return updated
 }
 
+/**
+ * Физическое удаление строки (§2.2): вызывающий обязан заранее проверить отсутствие
+ * ссылок через ensureDeletable — сама функция ничего не блокирует.
+ */
+export function deleteRow(tx: DbLike, table: SQLiteTable, id: number, ctx: AuditContext = {}): void {
+  const cols = getTableColumns(table) as Record<string, SQLiteColumn>
+  const entity = getTableName(table)
+  const before = tx.select().from(table).where(eq(cols.id!, id)).get() as Record<string, unknown> | undefined
+  if (!before) throw new NotFoundError(entity, id)
+
+  tx.delete(table).where(eq(cols.id!, id)).run()
+  withAudit(tx, entity, id, 'delete', before, null, ctx)
+  writeSnapshot(tx, ctx, entity, id, before, null)
+}
+
 /** Историчное «удаление»: проставление valid_to вместо DELETE (§4.1). */
 export function closeRow(
   tx: DbLike,

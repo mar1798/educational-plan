@@ -63,7 +63,7 @@ export const changeLog = sqliteTable(
     operationId: integer('operation_id').references(() => operation.id, { onDelete: 'restrict' }),
     entity: text('entity').notNull(),
     entityId: integer('entity_id').notNull(),
-    action: text('action').notNull().$type<'create' | 'update' | 'close'>(),
+    action: text('action').notNull().$type<'create' | 'update' | 'close' | 'delete'>(),
     beforeJson: text('before_json'),
     afterJson: text('after_json'),
     at: text('at').notNull(),

@@ -73,6 +73,10 @@ export function undoOperation(db: Db, operationId: number): void {
         // Строка была создана этой операцией — откат её физически удаляет:
         // ничто вне этой же операции не могло успеть на неё сослаться.
         tx.delete(table).where(eq(cols.id!, snap.rowId)).run()
+      } else if (snap.afterJson == null) {
+        // Строка была физически удалена этой операцией (deleteRow, §2.2) — откат
+        // вставляет её обратно с тем же id и прежними значениями.
+        tx.insert(table).values(JSON.parse(snap.beforeJson)).run()
       } else {
         const before = JSON.parse(snap.beforeJson) as Record<string, unknown>
         tx.update(table).set(before).where(eq(cols.id!, snap.rowId)).run()

@@ -4,11 +4,29 @@ import { app, BrowserWindow } from 'electron'
 import { createBackup, registerBackup, snapshotDbFile } from './db/backup/backup'
 import { createDb } from './db/client'
 import { runMigrations } from './db/migrate'
+import { ensurePairGrid } from './db/repo/pair-grid'
+import { ensureTeacherCategories } from './db/repo/seed'
+import { registerAcademicYearsHandlers } from './ipc/academic-years'
 import { registerAuditHandlers } from './ipc/audit'
 import { registerBackupHandlers } from './ipc/backup'
+import { registerBuildingsHandlers } from './ipc/buildings'
+import { registerCalendarDaysHandlers } from './ipc/calendar-days'
+import { registerCalendarPeriodsHandlers } from './ipc/calendar-periods'
+import { registerCmcHandlers } from './ipc/cmc'
 import { registerDemoComputeHandlers } from './ipc/demo-compute'
+import { registerDisciplinesHandlers } from './ipc/disciplines'
+import { registerDivisionSchemesHandlers } from './ipc/division-schemes'
+import { registerGroupsHandlers } from './ipc/groups'
 import { registerOperationsHandlers } from './ipc/operations'
+import { registerPairGridHandlers } from './ipc/pair-grid'
+import { registerSemestersHandlers } from './ipc/semesters'
+import { registerRoomsHandlers } from './ipc/rooms'
 import { registerSettingsHandlers } from './ipc/settings'
+import { registerSpecialitiesHandlers } from './ipc/specialities'
+import { registerTeacherAbsencesHandlers } from './ipc/teacher-absences'
+import { registerTeacherCategoriesHandlers } from './ipc/teacher-categories'
+import { registerTeacherQualificationsHandlers } from './ipc/teacher-qualifications'
+import { registerTeachersHandlers } from './ipc/teachers'
 import { applyContentSecurityPolicy, createMainWindow } from './window'
 
 function migrationsPath(): string {
@@ -39,12 +57,30 @@ async function bootstrap() {
   if (preMigration) registerBackup(db, path, preMigration)
   // Автокопия при каждом запуске (§1.6, решение №30).
   createBackup(sqlite, db, path, 'schedule')
+  ensureTeacherCategories(db)
+  ensurePairGrid(db)
 
   registerSettingsHandlers(db)
   registerDemoComputeHandlers(() => mainWindow)
   registerOperationsHandlers(db)
   registerAuditHandlers(db)
   registerBackupHandlers({ sqlite, db, dbPath: path, getWindow: () => mainWindow })
+  registerSpecialitiesHandlers(db)
+  registerCmcHandlers(db)
+  registerBuildingsHandlers(db)
+  registerRoomsHandlers(db)
+  registerDisciplinesHandlers(db)
+  registerTeacherCategoriesHandlers(db)
+  registerTeachersHandlers(db)
+  registerTeacherQualificationsHandlers(db)
+  registerTeacherAbsencesHandlers(db)
+  registerGroupsHandlers(db)
+  registerAcademicYearsHandlers(db)
+  registerSemestersHandlers(db)
+  registerDivisionSchemesHandlers(db)
+  registerCalendarDaysHandlers(db)
+  registerCalendarPeriodsHandlers(db)
+  registerPairGridHandlers(db)
 
   mainWindow = createMainWindow()
   mainWindow.on('closed', () => {

@@ -1,7 +1,7 @@
 import { changeLog } from '../schema/system'
 import type { DbLike } from './types'
 
-export type ChangeAction = 'create' | 'update' | 'close'
+export type ChangeAction = 'create' | 'update' | 'close' | 'delete'
 
 export interface AuditContext {
   reason?: string

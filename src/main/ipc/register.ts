@@ -12,7 +12,14 @@ export function handle<C extends IpcChannel>(
   ipcMain.handle(channel, async (_event, rawInput): Promise<Result<IpcContract[C]['out']>> => {
     const parsed = inputSchema.safeParse(rawInput)
     if (!parsed.success) {
-      return err<AppError>({ code: 'VALIDATION_ERROR', message: 'Некорректные входные данные', details: parsed.error.flatten() })
+      // Первое сообщение выносим в message: панели без zod-резолвера (недоступность, схемы деления)
+      // показывают именно его, и «Некорректные входные данные» ничего не объясняло бы завучу.
+      const first = parsed.error.issues[0]
+      return err<AppError>({
+        code: 'VALIDATION_ERROR',
+        message: first ? `Некорректные данные: ${first.message}` : 'Некорректные входные данные',
+        details: parsed.error.flatten(),
+      })
     }
     try {
       return ok(await handler(parsed.data))

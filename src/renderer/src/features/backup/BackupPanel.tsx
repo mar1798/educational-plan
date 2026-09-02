@@ -17,10 +17,7 @@ function formatSize(bytes: number): string {
   return `${Math.max(1, Math.round(bytes / 1024))} КБ`
 }
 
-/**
- * Задачи 1.7 и 1.7a: выбор бэкапа и восстановление из него, дата последней внешней копии
- * с предупреждением. Оформление временное — общий каркас UI появится в этапе 2 (задача 2.1).
- */
+/** Задачи 1.7 и 1.7a: выбор бэкапа и восстановление из него, дата последней внешней копии с предупреждением. */
 export function BackupPanel() {
   const [backups, setBackups] = useState<BackupInfo[]>([])
   const [externalAt, setExternalAt] = useState<string | null>(null)
