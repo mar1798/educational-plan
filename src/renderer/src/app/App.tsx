@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
+import { BackupPanel } from '../features/backup/BackupPanel'
 
 const SETTINGS_KEY = 'demo-note'
 
@@ -73,6 +74,8 @@ export function App() {
         {progress !== null && <p>Прогресс: {progress}%</p>}
         {result && <p>{result}</p>}
       </section>
+
+      <BackupPanel />
     </main>
   )
 }

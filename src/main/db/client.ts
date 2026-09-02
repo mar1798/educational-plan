@@ -10,7 +10,10 @@ export function createDb(dbPath: string) {
   const sqlite = new Database(dbPath)
   sqlite.pragma('journal_mode = WAL')
   sqlite.pragma('foreign_keys = ON')
-  sqlite.pragma('synchronous = NORMAL')
+  // Данные ценнее скорости (§4.1): FULL вместо NORMAL, busy_timeout — на случай
+  // параллельного VACUUM INTO бэкапа во время записи.
+  sqlite.pragma('synchronous = FULL')
+  sqlite.pragma('busy_timeout = 5000')
 
   const db = drizzle(sqlite, { schema })
 

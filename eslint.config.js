@@ -14,7 +14,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['src/main/**/*.{ts,tsx}', 'src/preload/**/*.{ts,tsx}', 'scripts/**/*.ts'],
+    files: ['src/main/**/*.{ts,tsx}', 'src/preload/**/*.{ts,tsx}', 'scripts/**/*.{ts,mjs}'],
     languageOptions: { globals: globals.node },
   },
   {
