@@ -14,6 +14,9 @@ export function createDb(dbPath: string) {
 
   const db = drizzle(sqlite, { schema })
 
+  const version = sqlite.prepare('select sqlite_version() as v').pluck().get() as string
+  console.log(`[db] SQLite ${version}, файл: ${dbPath}`)
+
   return { db, sqlite }
 }
 

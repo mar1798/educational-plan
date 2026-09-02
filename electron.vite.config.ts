@@ -1,6 +1,26 @@
 import { resolve } from 'node:path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
+import type { Plugin } from 'vite'
+
+// Упакованная сборка грузится по file://, где заголовок CSP из webRequest
+// применяется не во всех сборках Electron. Дублируем политику мета-тегом —
+// в dev его нет, чтобы не ломать инлайн-скрипт и ws HMR.
+const PRODUCTION_CSP =
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
+
+function cspMeta(): Plugin {
+  return {
+    name: 'inject-production-csp',
+    apply: 'build',
+    transformIndexHtml(html) {
+      return html.replace(
+        '<head>',
+        `<head>\n    <meta http-equiv="Content-Security-Policy" content="${PRODUCTION_CSP}" />`,
+      )
+    },
+  }
+}
 
 export default defineConfig({
   main: {
@@ -39,6 +59,6 @@ export default defineConfig({
         },
       },
     },
-    plugins: [react()],
+    plugins: [react(), cspMeta()],
   },
 })

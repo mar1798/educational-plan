@@ -9,3 +9,6 @@ release/
 .DS_Store
 .vite/
 drizzle/meta/*.json.bak
+scripts/.dev.db
+scripts/.dev.db-shm
+scripts/.dev.db-wal
