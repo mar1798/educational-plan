@@ -1,0 +1,43 @@
+appId: kg.college.educational-plan
+productName: Расписание колледжа
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - out/**/*
+  - package.json
+
+# Нативный .node-модуль (better-sqlite3) должен остаться распакованным —
+# Node не умеет грузить .node-бинарники из asar-архива.
+asarUnpack:
+  - '**/*.node'
+
+# Миграции читаются с диска в рантайме (drizzle-orm/better-sqlite3/migrator),
+# поэтому кладём их рядом со сборкой, а не внутрь asar.
+extraResources:
+  - from: drizzle
+    to: drizzle
+    filter:
+      - '**/*'
+      - '!meta/*.json.bak'
+
+mac:
+  target:
+    - target: dir
+      arch:
+        - arm64
+        - x64
+  category: public.app-category.education
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
