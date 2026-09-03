@@ -22,6 +22,22 @@ export const navSections: NavSection[] = [
     ],
   },
   {
+    title: 'Учебный план',
+    items: [{ label: 'Учебные планы', path: '/curricula' }],
+  },
+  {
+    title: 'Нагрузка',
+    items: [
+      { label: 'Нагрузка', path: '/teaching-load' },
+      { label: 'Потоки', path: '/streams' },
+      { label: 'Баланс нагрузки', path: '/load-balance' },
+    ],
+  },
+  {
+    title: 'Импорт',
+    items: [{ label: 'Импорт из Excel', path: '/import' }],
+  },
+  {
     title: 'Календарь',
     items: [
       { label: 'Учебные годы', path: '/academic-years' },

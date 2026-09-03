@@ -1,3 +1,5 @@
+import type { Cell, Grid, TargetEntity } from '../import/engine'
+
 export interface OperationSummary {
   id: number
   kind: 'generate' | 'rollout' | 'import' | 'bulk_edit' | 'restore'
@@ -236,6 +238,165 @@ export interface PairGridRow {
   rowVersion: number
 }
 
+// Учебный план (§3.1–3.4). Схема БД (curriculum/curriculum_row/curriculum_week)
+// смоделирована ещё в этапе 1 — здесь только домен-типы IPC-контракта.
+export interface Curriculum {
+  id: number
+  specialityId: number
+  admissionYear: number
+  name: string
+  status: 'draft' | 'approved' | 'archived'
+  approvedAt: string | null
+  approvedBy: string | null
+  rowVersion: number
+}
+
+export interface CurriculumRow {
+  id: number
+  curriculumId: number
+  disciplineId: number
+  course: number
+  semesterNo: number
+  credits: number
+  hoursTotal: number
+  hoursClassroom: number
+  hoursTheory: number
+  hoursPractice: number
+  hoursSeminar: number
+  hoursLab: number
+  hoursSrs: number
+  controlSemester: number | null
+  validFrom: string
+  validTo: string | null
+  supersedesId: number | null
+  rowVersion: number
+}
+
+export interface CurriculumWeek {
+  id: number
+  curriculumRowId: number
+  weekNo: number
+  hours: number
+  rowVersion: number
+}
+
+export interface CurriculumRowEditPreview {
+  affectedLessons: number
+}
+
+export interface CurriculumRowsBulkCreateResult {
+  operationId: number
+  created: number
+  skipped: { row: Record<string, Cell>; reason: string }[]
+}
+
+// Нагрузка, потоки, прочие часы (§3.5–3.7a). Схема (stream/stream_member/teaching_load,
+// other_load) смоделирована в этапах 1–2 — здесь только домен-типы IPC-контракта.
+export interface TeachingLoad {
+  id: number
+  semesterId: number
+  curriculumRowId: number
+  teacherId: number
+  groupId: number | null
+  streamId: number | null
+  divisionSchemeId: number | null
+  subgroupId: number | null
+  lessonKind: 'theory' | 'practice' | 'seminar' | 'lab'
+  hoursPlanned: number
+  requiresParallel: boolean
+  pairedLoadId: number | null
+  roomTypeRequired: Room['roomType'] | null
+  roomIdFixed: number | null
+  buildingIdRequired: number | null
+  clinicalModeOverride: 'full_day' | 'block' | 'free' | null
+  validFrom: string
+  validTo: string | null
+  note: string | null
+  rowVersion: number
+}
+
+export interface TeachingLoadSaveResult {
+  row: TeachingLoad
+  teacherHoursOverYear: number | null
+}
+
+export interface Stream {
+  id: number
+  semesterId: number
+  name: string
+  validFrom: string
+  validTo: string | null
+  rowVersion: number
+}
+
+export interface StreamMember {
+  id: number
+  streamId: number
+  groupId: number
+  validFrom: string
+  validTo: string | null
+  rowVersion: number
+}
+
+export interface StreamWithMembers extends Stream {
+  members: StreamMember[]
+}
+
+export interface OtherLoad {
+  id: number
+  semesterId: number
+  teacherId: number
+  kind: 'test' | 'method' | 'iga' | 'other'
+  hours: number
+  groupId: number | null
+  note: string | null
+  rowVersion: number
+}
+
+export interface GroupBalanceRow {
+  groupId: number
+  groupName: string
+  plannedHours: number
+  assignedHours: number
+  remainingHours: number
+  /** Недельный лимит группы (§1.1 п.20) и он же в пересчёте на семестр — чтобы приближение к лимиту было видно до генерации (§3.7a). */
+  maxHoursPerWeek: number
+  limitHours: number
+}
+
+export interface TeacherBalanceRow {
+  teacherId: number
+  teacherName: string
+  assignedHours: number
+  otherHours: number
+  totalHours: number
+  normHoursYear: number | null
+  overNorm: boolean
+}
+
+// Универсальный мастер импорта (§3.8): main читает файл (ExcelJS) и хранит профили,
+// разбор сетки — общие чистые функции shared/import/engine.ts, переиспользуемые и в renderer
+// для живого предпросмотра без обращения к main на каждое изменение настройки.
+export interface SheetInfo {
+  name: string
+  rowCount: number
+  columnCount: number
+}
+
+export interface ImportProfile {
+  id: number
+  name: string
+  targetEntity: TargetEntity
+  mappingJson: string
+  rowVersion: number
+}
+
+export interface ImportApplyResult {
+  operationId: number
+  created: number
+  skipped: { row: Record<string, Cell>; reason: string }[]
+}
+
 export interface IpcContract {
   'settings:get': { in: { key: string }; out: { value: string | null } }
   'settings:set': { in: { key: string; value: string }; out: { ok: true } }
@@ -349,6 +510,62 @@ export interface IpcContract {
     in: { rows: { pairNo: number; rowVersion: number; startsAt: string; endsAt: string; academicHours: number; enabled: boolean }[] }
     out: PairGridRow[]
   }
+
+  // Учебный план (§3.1–3.3): создание/правка плана — единый канал 'save', как справочники.
+  'curricula:list': { in: { specialityId?: number; includeArchived?: boolean }; out: Curriculum[] }
+  'curricula:save': { in: CurriculumSaveInput; out: Curriculum }
+  'curricula:approve': { in: { id: number; rowVersion: number }; out: { ok: true } }
+  'curricula:archive': { in: { id: number; rowVersion: number; archived: boolean }; out: { ok: true } }
+  // Копирование на новый набор (§3.3, §3.10): одна операция, отменяемая целиком.
+  'curricula:copy': { in: CurriculumCopyInput; out: { operationId: number; curriculum: Curriculum } }
+
+  // Строки плана (§3.1, §3.2). editPreview — «затронуто занятий: N после даты»
+  // до того, как правка утверждённой строки создаст новую версию.
+  'curriculumRows:list': { in: { curriculumId: number }; out: CurriculumRow[] }
+  'curriculumRows:create': { in: CurriculumRowCreateInput; out: CurriculumRow }
+  'curriculumRows:editPreview': { in: { id: number; effectiveFrom: string }; out: CurriculumRowEditPreview }
+  'curriculumRows:edit': { in: CurriculumRowEditInput; out: { operationId: number; row: CurriculumRow; versioned: boolean } }
+  'curriculumRows:delete': { in: { id: number }; out: { ok: true } }
+  // Быстрый ручной ввод (§3.10): вставка диапазона из буфера — те же правила резолвинга
+  // дисциплин, что и в мастере импорта (import/apply.ts), одной отменяемой операцией.
+  'curriculumRows:bulkCreate': { in: CurriculumRowsBulkCreateInput; out: CurriculumRowsBulkCreateResult }
+
+  // Недельная раскладка часов строки плана (§3.4): равномерно по умолчанию, правится вручную.
+  'curriculumWeeks:list': { in: { curriculumRowId: number }; out: CurriculumWeek[] }
+  'curriculumWeeks:generate': { in: { curriculumRowId: number; weekCount: number }; out: CurriculumWeek[] }
+  'curriculumWeeks:save': {
+    in: { curriculumRowId: number; weeks: { id: number; rowVersion: number; hours: number }[] }
+    out: CurriculumWeek[]
+  }
+
+  // Нагрузка (§3.5, §3.6, §3.6a, §3.7a): назначение преподавателя на дисциплину+группу/поток/подгруппу.
+  'teachingLoad:list': { in: { semesterId: number }; out: TeachingLoad[] }
+  'teachingLoad:save': { in: TeachingLoadSaveInput; out: TeachingLoadSaveResult }
+  'teachingLoad:delete': { in: { id: number }; out: { ok: true } }
+
+  // Потоки (§3.5a): лекция на несколько групп одной специальности и курса одной строкой.
+  'streams:listForSemester': { in: { semesterId: number }; out: StreamWithMembers[] }
+  'streams:create': { in: StreamCreateInput; out: StreamWithMembers }
+  'streams:disband': { in: { id: number }; out: { createdLoadIds: number[] } }
+
+  // Прочие часы (§3.9a): вне сетки, в годовую нагрузку и отчёт входят, солвер не видит.
+  'otherLoad:list': { in: { semesterId: number }; out: OtherLoad[] }
+  'otherLoad:save': { in: OtherLoadSaveInput; out: OtherLoad }
+  'otherLoad:delete': { in: { id: number }; out: { ok: true } }
+
+  // Баланс нагрузки (§3.7): «сколько ещё не роздано» / «сколько набрано».
+  'loadBalance:byGroup': { in: { semesterId: number }; out: GroupBalanceRow[] }
+  'loadBalance:byTeacher': { in: { semesterId: number }; out: TeacherBalanceRow[] }
+
+  // Мастер импорта (§3.8): файл → лист → область данных → сопоставление → предпросмотр → применение.
+  'import:pickFile': { in: Record<string, never>; out: { filePath: string; fileName: string } | { cancelled: true } }
+  'import:listSheets': { in: { filePath: string }; out: SheetInfo[] }
+  'import:readGrid': { in: { filePath: string; sheetName: string }; out: Grid }
+  'import:profiles:list': { in: { targetEntity?: TargetEntity }; out: ImportProfile[] }
+  'import:profiles:save': { in: ImportProfileSaveInput; out: ImportProfile }
+  'import:profiles:delete': { in: { id: number }; out: { ok: true } }
+  // Операция вида 'import' (§1.5) — откатывается одной кнопкой на экране «Операции» (3.9).
+  'import:apply': { in: ImportApplyInput; out: ImportApplyResult }
 }
 
 export interface SpecialitySaveInput {
@@ -488,6 +705,106 @@ export interface CalendarPeriodSaveInput {
   startsOn: string
   endsOn: string
   note: string | null
+}
+
+export interface CurriculumSaveInput {
+  id?: number
+  rowVersion?: number
+  specialityId: number
+  admissionYear: number
+  name: string
+}
+
+export interface CurriculumCopyInput {
+  fromCurriculumId: number
+  specialityId: number
+  admissionYear: number
+  name: string
+}
+
+export interface CurriculumRowFields {
+  disciplineId: number
+  course: number
+  semesterNo: number
+  credits: number
+  hoursTotal: number
+  hoursClassroom: number
+  hoursTheory: number
+  hoursPractice: number
+  hoursSeminar: number
+  hoursLab: number
+  hoursSrs: number
+  controlSemester: number | null
+}
+
+export interface CurriculumRowCreateInput extends CurriculumRowFields {
+  curriculumId: number
+  validFrom: string
+}
+
+export interface CurriculumRowEditInput extends CurriculumRowFields {
+  id: number
+  rowVersion: number
+  effectiveFrom: string
+}
+
+export interface CurriculumRowsBulkCreateInput {
+  curriculumId: number
+  rows: Record<string, Cell>[]
+  validFrom: string
+}
+
+export interface TeachingLoadSaveInput {
+  id?: number
+  rowVersion?: number
+  semesterId: number
+  curriculumRowId: number
+  teacherId: number
+  groupId: number | null
+  streamId: number | null
+  divisionSchemeId: number | null
+  subgroupId: number | null
+  lessonKind: TeachingLoad['lessonKind']
+  hoursPlanned: number
+  requiresParallel: boolean
+  roomTypeRequired: Room['roomType'] | null
+  clinicalModeOverride: 'full_day' | 'block' | 'free' | null
+  note: string | null
+  validFrom: string
+}
+
+export interface StreamCreateInput {
+  semesterId: number
+  name: string
+  groupIds: number[]
+  validFrom: string
+}
+
+export interface OtherLoadSaveInput {
+  id?: number
+  rowVersion?: number
+  semesterId: number
+  teacherId: number
+  kind: OtherLoad['kind']
+  hours: number
+  groupId: number | null
+  note: string | null
+}
+
+export interface ImportProfileSaveInput {
+  id?: number
+  rowVersion?: number
+  name: string
+  targetEntity: TargetEntity
+  mappingJson: string
+}
+
+export interface ImportApplyInput {
+  targetEntity: TargetEntity
+  rows: Record<string, Cell>[]
+  curriculumId?: number
+  semesterId?: number
+  validFrom: string
 }
 
 export type IpcChannel = keyof IpcContract

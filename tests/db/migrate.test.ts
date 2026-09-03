@@ -23,7 +23,7 @@ describe('миграции (§1.1)', () => {
     const expected = [
       'academic_year', 'app_setting', 'backup', 'building', 'calendar_day', 'calendar_period',
       'change_log', 'cmc', 'constraint_weight', 'curriculum', 'curriculum_row', 'curriculum_week',
-      'discipline', 'division_scheme', 'lesson', 'lesson_group', 'operation', 'operation_snapshot',
+      'discipline', 'division_scheme', 'import_profile', 'lesson', 'lesson_group', 'operation', 'operation_snapshot',
       'other_load', 'pair_grid', 'room', 'schedule_template', 'semester', 'speciality', 'stream',
       'stream_member', 'study_group', 'subgroup', 'substitution', 'teacher', 'teacher_absence',
       'teacher_category', 'teacher_qualification', 'teaching_load', 'template_entry',

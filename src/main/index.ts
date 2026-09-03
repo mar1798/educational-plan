@@ -13,10 +13,12 @@ import { registerBuildingsHandlers } from './ipc/buildings'
 import { registerCalendarDaysHandlers } from './ipc/calendar-days'
 import { registerCalendarPeriodsHandlers } from './ipc/calendar-periods'
 import { registerCmcHandlers } from './ipc/cmc'
+import { registerCurriculumHandlers } from './ipc/curriculum'
 import { registerDemoComputeHandlers } from './ipc/demo-compute'
 import { registerDisciplinesHandlers } from './ipc/disciplines'
 import { registerDivisionSchemesHandlers } from './ipc/division-schemes'
 import { registerGroupsHandlers } from './ipc/groups'
+import { registerImportHandlers } from './ipc/import'
 import { registerOperationsHandlers } from './ipc/operations'
 import { registerPairGridHandlers } from './ipc/pair-grid'
 import { registerSemestersHandlers } from './ipc/semesters'
@@ -27,6 +29,7 @@ import { registerTeacherAbsencesHandlers } from './ipc/teacher-absences'
 import { registerTeacherCategoriesHandlers } from './ipc/teacher-categories'
 import { registerTeacherQualificationsHandlers } from './ipc/teacher-qualifications'
 import { registerTeachersHandlers } from './ipc/teachers'
+import { registerTeachingLoadHandlers } from './ipc/teaching-load'
 import { applyContentSecurityPolicy, createMainWindow } from './window'
 
 function migrationsPath(): string {
@@ -81,6 +84,9 @@ async function bootstrap() {
   registerCalendarDaysHandlers(db)
   registerCalendarPeriodsHandlers(db)
   registerPairGridHandlers(db)
+  registerCurriculumHandlers(db)
+  registerTeachingLoadHandlers(db)
+  registerImportHandlers({ db, getWindow: () => mainWindow })
 
   mainWindow = createMainWindow()
   mainWindow.on('closed', () => {

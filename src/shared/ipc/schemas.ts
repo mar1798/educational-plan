@@ -369,3 +369,184 @@ export const pairGridSaveInput = z.object({ rows: z.array(pairGridRowInput).min(
   (v) => v.rows.every((r) => r.startsAt < r.endsAt),
   { message: 'Время начала пары должно быть раньше времени окончания', path: ['rows'] },
 )
+
+// Учебный план (§3.1–3.4).
+export const curriculaListInput = z.object({ specialityId: z.number().int().positive().optional(), includeArchived: z.boolean().optional() })
+
+export const curriculumSaveInput = withOptimisticId
+  .extend({
+    specialityId: z.number().int().positive('Выберите специальность'),
+    admissionYear: z.number().int().min(2000, 'Некорректный год').max(2100, 'Некорректный год'),
+    name: z.string().min(1, 'Укажите название плана'),
+  })
+  .superRefine(requireRowVersionOnUpdate)
+
+export const curriculumApproveInput = z.object({ id: z.number().int().positive(), rowVersion: z.number().int().positive() })
+
+export const curriculumArchiveInput = z.object({
+  id: z.number().int().positive(),
+  rowVersion: z.number().int().positive(),
+  archived: z.boolean(),
+})
+
+export const curriculumCopyInput = z.object({
+  fromCurriculumId: z.number().int().positive(),
+  specialityId: z.number().int().positive('Выберите специальность'),
+  admissionYear: z.number().int().min(2000, 'Некорректный год').max(2100, 'Некорректный год'),
+  name: z.string().min(1, 'Укажите название плана'),
+})
+
+// Строки плана (§3.1): четыре вида часов + СРС (§1.1 п.33), инвариант
+// «кредиты×30=всего часов» проверяется в UI как предупреждение, не здесь — завуч
+// может сознательно отступить, блокировать сохранение нельзя.
+const curriculumRowFieldsInput = {
+  disciplineId: z.number().int().positive('Выберите дисциплину'),
+  course: z.number().int().min(1, 'От 1 до 4').max(4, 'От 1 до 4'),
+  semesterNo: z.number().int().min(1, 'От 1 до 8').max(8, 'От 1 до 8'),
+  credits: z.number().int().positive('Укажите кредиты'),
+  hoursTotal: z.number().int().nonnegative(),
+  hoursClassroom: z.number().int().nonnegative(),
+  hoursTheory: z.number().int().nonnegative(),
+  hoursPractice: z.number().int().nonnegative(),
+  hoursSeminar: z.number().int().nonnegative(),
+  hoursLab: z.number().int().nonnegative(),
+  hoursSrs: z.number().int().nonnegative(),
+  controlSemester: z.number().int().positive().nullable(),
+}
+
+export const curriculumRowsListInput = z.object({ curriculumId: z.number().int().positive() })
+
+export const curriculumRowCreateInput = z.object({
+  curriculumId: z.number().int().positive(),
+  validFrom: z.string().min(1, 'Укажите дату начала действия'),
+  ...curriculumRowFieldsInput,
+})
+
+export const curriculumRowEditPreviewInput = z.object({
+  id: z.number().int().positive(),
+  effectiveFrom: z.string().min(1, 'Укажите дату правки'),
+})
+
+export const curriculumRowEditInput = z.object({
+  id: z.number().int().positive(),
+  rowVersion: z.number().int().positive(),
+  effectiveFrom: z.string().min(1, 'Укажите дату правки'),
+  ...curriculumRowFieldsInput,
+})
+
+export const curriculumRowDeleteInput = z.object({ id: z.number().int().positive() })
+
+// Быстрый ручной ввод (§3.10): вставка диапазона из буфера — та же нестрогая форма
+// строки, что и мастер импорта (import:apply), только фиксированный целевой план.
+export const curriculumRowsBulkCreateInput = z.object({
+  curriculumId: z.number().int().positive(),
+  rows: z.array(z.record(z.string(), z.union([z.string(), z.number(), z.null()]))).min(1),
+  validFrom: z.string().min(1, 'Укажите дату начала действия'),
+})
+
+// Недельная раскладка (§3.4).
+export const curriculumWeeksListInput = z.object({ curriculumRowId: z.number().int().positive() })
+
+export const curriculumWeeksGenerateInput = z.object({
+  curriculumRowId: z.number().int().positive(),
+  weekCount: z.number().int().positive('Укажите число недель'),
+})
+
+const curriculumWeekSaveRowInput = z.object({
+  id: z.number().int().positive(),
+  rowVersion: z.number().int().positive(),
+  hours: z.number().int().nonnegative(),
+})
+
+export const curriculumWeeksSaveInput = z.object({
+  curriculumRowId: z.number().int().positive(),
+  weeks: z.array(curriculumWeekSaveRowInput).min(1),
+})
+
+// Нагрузка (§3.5, §3.6, §3.6a): «ровно одно из group/stream» проверяется в репозитории
+// (нужен доступ к БД для содержательного сообщения), здесь — только форма полей.
+export const teachingLoadListInput = z.object({ semesterId: z.number().int().positive() })
+
+export const teachingLoadSaveInput = withOptimisticId
+  .extend({
+    semesterId: z.number().int().positive(),
+    curriculumRowId: z.number().int().positive('Выберите строку плана'),
+    teacherId: z.number().int().positive('Выберите преподавателя'),
+    groupId: z.number().int().positive().nullable(),
+    streamId: z.number().int().positive().nullable(),
+    divisionSchemeId: z.number().int().positive().nullable(),
+    subgroupId: z.number().int().positive().nullable(),
+    lessonKind: z.enum(['theory', 'practice', 'seminar', 'lab']),
+    hoursPlanned: z.number().int().positive('Укажите часы'),
+    requiresParallel: z.boolean(),
+    roomTypeRequired: roomType.nullable(),
+    clinicalModeOverride: z.enum(['full_day', 'block', 'free']).nullable(),
+    note: z.string().nullable(),
+    validFrom: z.string().min(1, 'Укажите дату начала действия'),
+  })
+  .superRefine(requireRowVersionOnUpdate)
+
+export const teachingLoadDeleteInput = z.object({ id: z.number().int().positive() })
+
+// Потоки (§3.5a).
+export const streamsListForSemesterInput = z.object({ semesterId: z.number().int().positive() })
+
+export const streamCreateInput = z.object({
+  semesterId: z.number().int().positive(),
+  name: z.string().min(1, 'Укажите название потока'),
+  groupIds: z.array(z.number().int().positive()).min(2, 'Выберите минимум 2 группы'),
+  validFrom: z.string().min(1, 'Укажите дату начала действия'),
+})
+
+export const streamDisbandInput = z.object({ id: z.number().int().positive() })
+
+// Прочие часы (§3.9a): вне сетки, солвер их не получает.
+export const otherLoadListInput = z.object({ semesterId: z.number().int().positive() })
+
+export const otherLoadSaveInput = withOptimisticId
+  .extend({
+    semesterId: z.number().int().positive(),
+    teacherId: z.number().int().positive('Выберите преподавателя'),
+    kind: z.enum(['test', 'method', 'iga', 'other']),
+    hours: z.number().int().positive('Укажите часы'),
+    groupId: z.number().int().positive().nullable(),
+    note: z.string().nullable(),
+  })
+  .superRefine(requireRowVersionOnUpdate)
+
+export const otherLoadDeleteInput = z.object({ id: z.number().int().positive() })
+
+// Баланс нагрузки (§3.7).
+export const loadBalanceByGroupInput = z.object({ semesterId: z.number().int().positive() })
+export const loadBalanceByTeacherInput = z.object({ semesterId: z.number().int().positive() })
+
+// Мастер импорта (§3.8): значения ячеек — string|number|null, разбор самой сетки
+// не зависит от целевой сущности (engine.ts), поэтому схема входа здесь намеренно нестрогая.
+const targetEntity = z.enum(['curriculum', 'teaching_load', 'teacher', 'calendar_period'])
+const cellValue = z.union([z.string(), z.number(), z.null()])
+
+export const importPickFileInput = z.object({})
+
+export const importListSheetsInput = z.object({ filePath: z.string().min(1) })
+
+export const importReadGridInput = z.object({ filePath: z.string().min(1), sheetName: z.string().min(1) })
+
+export const importProfilesListInput = z.object({ targetEntity: targetEntity.optional() })
+
+export const importProfileSaveInput = withOptimisticId
+  .extend({
+    name: z.string().min(1, 'Укажите название профиля'),
+    targetEntity,
+    mappingJson: z.string().min(1),
+  })
+  .superRefine(requireRowVersionOnUpdate)
+
+export const importProfileDeleteInput = z.object({ id: z.number().int().positive() })
+
+export const importApplyInput = z.object({
+  targetEntity,
+  rows: z.array(z.record(z.string(), cellValue)),
+  curriculumId: z.number().int().positive().optional(),
+  semesterId: z.number().int().positive().optional(),
+  validFrom: z.string().min(1, 'Укажите дату начала действия'),
+})

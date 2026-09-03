@@ -5,8 +5,14 @@ import { CalendarPeriodsPage } from '../features/calendar/CalendarPeriodsPage'
 import { CalendarYearPage } from '../features/calendar/CalendarYearPage'
 import { SemestersPage } from '../features/calendar/SemestersPage'
 import { CmcPage } from '../features/cmc/CmcPage'
+import { CurriculaPage } from '../features/curriculum/CurriculaPage'
+import { CurriculumEditorPage } from '../features/curriculum/CurriculumEditorPage'
 import { DisciplinesPage } from '../features/disciplines/DisciplinesPage'
 import { GroupsPage } from '../features/groups/GroupsPage'
+import { ImportWizardPage } from '../features/import/ImportWizardPage'
+import { LoadBalancePage } from '../features/load/LoadBalancePage'
+import { LoadEditorPage } from '../features/load/LoadEditorPage'
+import { StreamsPage } from '../features/load/StreamsPage'
 import { OperationsPage } from '../features/operations/OperationsPage'
 import { PairGridPage } from '../features/settings/PairGridPage'
 import { RoomsPage } from '../features/rooms/RoomsPage'
@@ -34,6 +40,12 @@ export const router = createHashRouter([
       { path: 'semesters', element: <SemestersPage /> },
       { path: 'calendar-periods', element: <CalendarPeriodsPage /> },
       { path: 'calendar-year', element: <CalendarYearPage /> },
+      { path: 'curricula', element: <CurriculaPage /> },
+      { path: 'curricula/:id', element: <CurriculumEditorPage /> },
+      { path: 'teaching-load', element: <LoadEditorPage /> },
+      { path: 'streams', element: <StreamsPage /> },
+      { path: 'load-balance', element: <LoadBalancePage /> },
+      { path: 'import', element: <ImportWizardPage /> },
       { path: 'system', element: <SystemPage /> },
       { path: 'operations', element: <OperationsPage /> },
       { path: 'pair-grid', element: <PairGridPage /> },
