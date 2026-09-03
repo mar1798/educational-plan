@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { app, BrowserWindow } from 'electron'
 import { createBackup, registerBackup, snapshotDbFile } from './db/backup/backup'
 import { createDb } from './db/client'
-import { runMigrations } from './db/migrate'
+import { hasPendingMigrations, runMigrations } from './db/migrate'
 import { ensureConstraintWeights } from './db/repo/constraint-weights'
 import { ensurePairGrid } from './db/repo/pair-grid'
 import { ensureTeacherCategories } from './db/repo/seed'
@@ -61,7 +61,7 @@ async function bootstrap() {
   const { db, sqlite } = createDb(path)
   // Файл снимается до миграции, а регистрируется после: до неё таблицы `backup`
   // в старой схеме может ещё не быть (БД этапа 0 знала только app_setting).
-  const preMigration = isExistingDb ? snapshotDbFile(sqlite, path, 'pre_migration') : null
+  const preMigration = isExistingDb && hasPendingMigrations(sqlite, migrationsPath()) ? snapshotDbFile(sqlite, path, 'pre_migration') : null
   runMigrations(db, migrationsPath())
   if (preMigration) registerBackup(db, path, preMigration)
   // Автокопия при каждом запуске (§1.6, решение №30).

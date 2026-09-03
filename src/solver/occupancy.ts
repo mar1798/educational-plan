@@ -80,6 +80,14 @@ export class Solution {
    */
   readonly studentHoursG: Float64Array
   readonly clinicalDay: Int32Array // [groupIdx * DAYS + (day-1)] — buildingIdx, занявший день, -1 = свободно
+  /**
+   * Сколько занятий режима `full_day` держат день группы за каждым зданием:
+   * [(groupIdx * DAYS + day-1) * buildings + b]. Именно счётчик, а не «защёлка» в
+   * `clinicalDay`: снимать притязание базы на день нужно, когда ушло последнее её
+   * `full_day`-занятие, а не когда в здании не осталось вообще никаких занятий группы —
+   * иначе `vacate` не отменяет свой `occupy` и день остаётся запертым за базой навсегда.
+   */
+  readonly clinicalCount: Int32Array
   /** Сколько занятий дня у группы прошло в каждом здании: [(groupIdx * DAYS + day-1) * buildings + b]. */
   readonly dayBuildingCount: Int32Array
   /** Занятия дня без известного здания (кабинет не назначен и здание не требуется). */
@@ -108,6 +116,7 @@ export class Solution {
     this.pairsPerDayT = new Uint8Array(teachers.length * DAYS)
     this.studentHoursG = new Float64Array(groups.length * POSITIONS)
     this.clinicalDay = new Int32Array(groups.length * DAYS).fill(-1)
+    this.clinicalCount = new Int32Array(groups.length * DAYS * this.buildingsCount)
     this.dayBuildingCount = new Int32Array(groups.length * DAYS * this.buildingsCount)
     this.dayNoBuildingCount = new Int32Array(groups.length * DAYS)
   }
@@ -122,6 +131,7 @@ export class Solution {
     copy.pairsPerDayT.set(this.pairsPerDayT)
     copy.studentHoursG.set(this.studentHoursG)
     copy.clinicalDay.set(this.clinicalDay)
+    copy.clinicalCount.set(this.clinicalCount)
     copy.dayBuildingCount.set(this.dayBuildingCount)
     copy.dayNoBuildingCount.set(this.dayNoBuildingCount)
     return copy
@@ -162,6 +172,14 @@ export class Solution {
       if (h > max) max = h
     })
     return max
+  }
+
+  /** Здание, которое ещё держит день группы своими `full_day`-занятиями, или -1. */
+  private claimingBuilding(dayKey: number): number {
+    for (let b = 0; b < this.buildingsCount; b++) {
+      if (this.clinicalCount[dayKey * this.buildingsCount + b]! > 0) return b
+    }
+    return -1
   }
 
   /** Здание, в котором у группы уже есть занятия в этот день, или null; `mixed` — их несколько. */
@@ -220,6 +238,8 @@ export class Solution {
       }
 
       if (unit.clinicalMode === 'full_day' && buildingIdx != null) {
+        const c = gKey * this.buildingsCount + buildingIdx
+        this.clinicalCount[c] = this.clinicalCount[c]! + 1
         this.clinicalDay[gKey] = buildingIdx
       }
     }
@@ -255,8 +275,10 @@ export class Solution {
       }
 
       if (unit.clinicalMode === 'full_day' && buildingIdx != null) {
-        // День перестаёт быть «занятым базой», только когда там не осталось её занятий.
-        if (this.dayBuildingCount[gKey * this.buildingsCount + buildingIdx]! === 0) this.clinicalDay[gKey] = -1
+        // День перестаёт быть «занятым базой», когда ушло последнее её `full_day`-занятие.
+        const c = gKey * this.buildingsCount + buildingIdx
+        this.clinicalCount[c] = this.clinicalCount[c]! - 1
+        this.clinicalDay[gKey] = this.claimingBuilding(gKey)
       }
     }
   }

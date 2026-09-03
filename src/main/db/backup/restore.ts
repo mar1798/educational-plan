@@ -1,5 +1,5 @@
 import { copyFileSync, existsSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import type Database from 'better-sqlite3'
 import type { Db } from '../client'
 import { backupsDir, createBackup } from './backup'
@@ -10,6 +10,11 @@ import { backupsDir, createBackup } from './backup'
  * недействительны.
  */
 export function restoreFromBackup(sqlite: Database.Database, db: Db, dbPath: string, backupFileName: string): void {
+  // Имя приходит из renderer и подставляется в путь: без этой проверки «../../…» увёл бы
+  // копирование за пределы папки бэкапов и подменил бы рабочую базу произвольным файлом.
+  if (backupFileName !== basename(backupFileName) || backupFileName.startsWith('.')) {
+    throw new Error(`Недопустимое имя файла бэкапа: ${backupFileName}`)
+  }
   const source = join(backupsDir(dbPath), backupFileName)
   if (!existsSync(source)) {
     throw new Error(`Файл бэкапа не найден: ${backupFileName}`)

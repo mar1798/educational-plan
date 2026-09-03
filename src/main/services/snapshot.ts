@@ -61,8 +61,17 @@ function unionBit(mask: readonly [number, number], bit: number): readonly [numbe
   return bit < 32 ? [mask[0] | (1 << bit), mask[1]] : [mask[0], mask[1] | (1 << (bit - 32))]
 }
 
-/** База/остаток недельных занятий из плановых часов (§5.2). */
+/**
+ * База/остаток недельных занятий из плановых часов (§5.2). `weeksCount` приходит из БД, и
+ * ноль там мгновенно превращает `base` в Infinity, а цикл создания юнитов — в бесконечный:
+ * главный процесс залипает без единого сообщения. Схема БД нуля не запрещает (`default 18`,
+ * без CHECK), zod прикрывает только ввод через IPC — восстановленный или отредактированный
+ * извне файл базы проходит мимо него, поэтому проверка стоит здесь, у самого расчёта.
+ */
 function lessonsFromHours(hoursPlanned: number, weeksCount: number): { base: number; rest: number } {
+  if (!Number.isFinite(weeksCount) || weeksCount < 1) {
+    throw new Error(`В семестре указано ${weeksCount} недель — расписание рассчитать нельзя, исправьте число недель семестра`)
+  }
   const lessonsTotal = Math.ceil(hoursPlanned / 2)
   const base = Math.floor(lessonsTotal / weeksCount)
   const rest = lessonsTotal - weeksCount * base
@@ -130,10 +139,18 @@ export function buildSolverInput(tx: DbLike, templateId: number, seed = Date.now
     for (const a of resolveEntryAttendees(tx, loadId)) {
       const groupIdx = groupIdxById.get(a.groupId)
       if (groupIdx == null) continue
-      // Позиции студентов не помещаются в 64 бита маски — обрезаем по последней доступной.
-      const posTo = Math.min(a.posTo, POSITIONS)
-      if (a.posFrom > posTo) continue
-      out.push({ groupIdx, memberMask: rangeMask(a.posFrom - 1, posTo - 1) })
+      // Предел модели — 64 позиции в группе (§4.6, решение №18: 30 + 25 укладывается с
+      // запасом). Молчаливое обрезание маски по 64-й позиции давало бы расписание, в котором
+      // «лишние» студенты не заняты ничем, а вместимость кабинета и недельный лимит часов
+      // считались бы не по всей группе — такую группу нужно показать завучу, а не урезать.
+      if (a.posTo > POSITIONS || a.posFrom < 1) {
+        throw new Error(
+          `Группа «${a.groupName}»: позиции студентов ${a.posFrom}–${a.posTo} выходят за предел модели (1–${POSITIONS}). ` +
+            'Уменьшите численность группы или разделите её.',
+        )
+      }
+      if (a.posFrom > a.posTo) continue
+      out.push({ groupIdx, memberMask: rangeMask(a.posFrom - 1, a.posTo - 1) })
     }
     return out
   }
