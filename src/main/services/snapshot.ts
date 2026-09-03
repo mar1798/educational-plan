@@ -5,8 +5,8 @@
  * как препятствия (`fixed`), а недостающие часы нагрузки — как `units` по формуле §5.2.
  */
 import { and, eq, isNull } from 'drizzle-orm'
-import type { FixedPlacement, RoomType, SolverInput, Unit, UnitAttendee } from '../../solver/model'
-import { DEFAULT_WEIGHTS, PAIRS, POSITIONS, slotIndex } from '../../solver/model'
+import type { FixedPlacement, RoomType, SolverInput, SoftUnavailability, Unit, UnitAttendee } from '../../solver/model'
+import { PAIRS, POSITIONS, slotIndex } from '../../solver/model'
 import { rangeMask } from '../../solver/occupancy'
 import { semester } from '../db/schema/calendar'
 import { curriculumRow, discipline } from '../db/schema/curriculum'
@@ -15,6 +15,7 @@ import { building, pairGrid, room } from '../db/schema/org'
 import { studyGroup, teacher, teacherAbsence } from '../db/schema/people'
 import { scheduleTemplate, templateEntry } from '../db/schema/schedule'
 import { NotFoundError } from '../db/repo/base-repo'
+import { loadWeights } from '../db/repo/constraint-weights'
 import { resolveEntryAttendees } from '../db/repo/schedule-template'
 import type { DbLike } from '../db/repo/types'
 
@@ -42,6 +43,18 @@ function unavailabilityMask(rows: { dayOfWeek: number | null; pairFrom: number; 
     }
   }
   return mask
+}
+
+/** `teacher_absence.kind='soft'` — не запрещает слот, а штрафуется как `teacher_preference` (§5.5). */
+function softUnavailability(rows: { dayOfWeek: number | null; pairFrom: number; pairTo: number; weight: number }[]): SoftUnavailability[] {
+  const out: SoftUnavailability[] = []
+  for (const a of rows) {
+    if (a.dayOfWeek == null) continue
+    let mask: readonly [number, number] = [0, 0]
+    for (let p = a.pairFrom; p <= a.pairTo; p++) mask = unionBit(mask, slotIndex(a.dayOfWeek, p))
+    out.push({ mask, weight: a.weight })
+  }
+  return out
 }
 
 function unionBit(mask: readonly [number, number], bit: number): readonly [number, number] {
@@ -88,17 +101,20 @@ export function buildSolverInput(tx: DbLike, templateId: number, seed = Date.now
 
   const teacherRows = tx.select().from(teacher).all()
   const teacherIdxById = new Map(teacherRows.map((t, idx) => [t.id, idx]))
-  const absenceRows = tx.select().from(teacherAbsence).where(and(eq(teacherAbsence.scope, 'weekday'), eq(teacherAbsence.kind, 'hard'))).all()
-  const absencesByTeacher = new Map<number, typeof absenceRows>()
-  for (const a of absenceRows) {
-    const list = absencesByTeacher.get(a.teacherId) ?? []
+  const weekdayAbsences = tx.select().from(teacherAbsence).where(eq(teacherAbsence.scope, 'weekday')).all()
+  const hardByTeacher = new Map<number, typeof weekdayAbsences>()
+  const softByTeacher = new Map<number, typeof weekdayAbsences>()
+  for (const a of weekdayAbsences) {
+    const byTeacher = a.kind === 'hard' ? hardByTeacher : softByTeacher
+    const list = byTeacher.get(a.teacherId) ?? []
     list.push(a)
-    absencesByTeacher.set(a.teacherId, list)
+    byTeacher.set(a.teacherId, list)
   }
   const teachers = teacherRows.map((t, idx) => ({
     idx,
     id: t.id,
-    unavailable: unavailabilityMask(absencesByTeacher.get(t.id) ?? []),
+    unavailable: unavailabilityMask(hardByTeacher.get(t.id) ?? []),
+    softUnavailable: softUnavailability(softByTeacher.get(t.id) ?? []),
     maxPairsPerDay: t.maxPairsPerDay,
   }))
 
@@ -227,7 +243,10 @@ export function buildSolverInput(tx: DbLike, templateId: number, seed = Date.now
     groups,
     slots,
     fixed,
-    weights: DEFAULT_WEIGHTS,
-    limits: { timeBudgetMs: 60_000, maxIterations: 200_000, seed },
+    weights: loadWeights(tx),
+    // maxIterations — предохранитель на случай зависшего железа, не рабочий предел (§5.6):
+    // при обычной скорости хода локального поиска бюджет времени исчерпывается на порядки
+    // раньше, чем счётчик итераций.
+    limits: { timeBudgetMs: 60_000, maxIterations: 20_000_000, seed },
   }
 }

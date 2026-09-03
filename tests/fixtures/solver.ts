@@ -27,7 +27,7 @@ export function makeSlots(enabledPairs = PAIRS): SlotInfo[] {
 }
 
 export function makeTeacher(idx: number, opts: Partial<TeacherInfo> = {}): TeacherInfo {
-  return { idx, id: idx + 1, unavailable: [0, 0], maxPairsPerDay: null, ...opts }
+  return { idx, id: idx + 1, unavailable: [0, 0], softUnavailable: [], maxPairsPerDay: null, ...opts }
 }
 
 export function makeRoom(idx: number, opts: Partial<RoomInfo> = {}): RoomInfo {
@@ -64,7 +64,8 @@ export function makeUnit(opts: Partial<Unit> & Pick<Unit, 'teacherIdx'>): Unit {
 }
 
 export function baseLimits(seed = 1) {
-  return { timeBudgetMs: 10_000, maxIterations: 100_000, seed }
+  // maxIterations — предохранитель, не рабочий предел (§5.6): бюджет времени исчерпывается раньше.
+  return { timeBudgetMs: 10_000, maxIterations: 20_000_000, seed }
 }
 
 /** `minimal` (§9.2): 1 группа, 2 преподавателя, 2 кабинета — базовая корректность. */
@@ -204,6 +205,7 @@ export function fullCollegeInput(): SolverInput {
 
   const units: Unit[] = []
   let teacherCursor = 0
+  const disciplinesPerGroup = 7 // реалистичный недельный набор предметов, не одна дисциплина на все 10 занятий
   for (let g = 0; g < groupsCount; g++) {
     // ~10 недельных занятий на группу — сопоставимо с реальной недельной сеткой семестра.
     for (let u = 0; u < 10; u++) {
@@ -212,6 +214,7 @@ export function fullCollegeInput(): SolverInput {
       units.push(
         makeUnit({
           teacherIdx,
+          disciplineIdx: u % disciplinesPerGroup,
           roomTypeRequired: roomTypes[u % roomTypes.length],
           attendees: [{ groupIdx: g, memberMask: [0xffffffff, 0xffffffff] }],
         }),

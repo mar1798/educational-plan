@@ -41,6 +41,7 @@ export const navSections: NavSection[] = [
     title: 'Расписание',
     items: [
       { label: 'Генерация', path: '/generation' },
+      { label: 'Веса критериев', path: '/constraint-weights' },
       { label: 'Шаблон недели', path: '/schedule-template' },
       { label: 'Конфликты', path: '/schedule-conflicts' },
     ],

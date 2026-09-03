@@ -239,6 +239,17 @@ export interface PairGridRow {
   rowVersion: number
 }
 
+// Веса мягких критериев солвера (§5.5, этап 6): один общий набор ползунков на всё приложение.
+export interface ConstraintWeightRow {
+  id: number
+  code: string
+  weight: number
+  enabled: boolean
+  titleRu: string
+  descriptionRu: string | null
+  rowVersion: number
+}
+
 // Учебный план (§3.1–3.4). Схема БД (curriculum/curriculum_row/curriculum_week)
 // смоделирована ещё в этапе 1 — здесь только домен-типы IPC-контракта.
 export interface Curriculum {
@@ -603,6 +614,13 @@ export interface IpcContract {
   'pairGrid:save': {
     in: { rows: { pairNo: number; rowVersion: number; startsAt: string; endsAt: string; academicHours: number; enabled: boolean }[] }
     out: PairGridRow[]
+  }
+
+  // Веса мягких критериев (§5.5, этап 6): сохраняется целиком, как сетка звонков выше.
+  'constraintWeights:list': { in: Record<string, never>; out: ConstraintWeightRow[] }
+  'constraintWeights:save': {
+    in: { rows: { id: number; rowVersion: number; weight: number; enabled: boolean }[] }
+    out: ConstraintWeightRow[]
   }
 
   // Учебный план (§3.1–3.3): создание/правка плана — единый канал 'save', как справочники.

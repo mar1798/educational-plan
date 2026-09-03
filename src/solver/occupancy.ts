@@ -90,7 +90,8 @@ export class Solution {
     return new Solution(input.teachers, input.rooms, input.groups, input.slots, input.buildings.length)
   }
 
-  private readonly buildingsCount: number
+  /** Публично — нужно `localSearch.ts`, чтобы клонировать состояние под снимок «лучшего решения» (§5.6 рестарты). */
+  readonly buildingsCount: number
 
   constructor(
     readonly teachers: readonly TeacherInfo[],
@@ -109,6 +110,21 @@ export class Solution {
     this.clinicalDay = new Int32Array(groups.length * DAYS).fill(-1)
     this.dayBuildingCount = new Int32Array(groups.length * DAYS * this.buildingsCount)
     this.dayNoBuildingCount = new Int32Array(groups.length * DAYS)
+  }
+
+  /** Глубокая копия для снимка «лучшего решения» (§5.6 рестарты локального поиска) — только typed arrays, дёшево. */
+  clone(): Solution {
+    const copy = new Solution(this.teachers, this.rooms, this.groups, this.slots, this.buildingsCount)
+    copy.teacherBusy.set(this.teacherBusy)
+    copy.roomBusy.set(this.roomBusy)
+    copy.studentBusy.set(this.studentBusy)
+    copy.pairsPerDayG.set(this.pairsPerDayG)
+    copy.pairsPerDayT.set(this.pairsPerDayT)
+    copy.studentHoursG.set(this.studentHoursG)
+    copy.clinicalDay.set(this.clinicalDay)
+    copy.dayBuildingCount.set(this.dayBuildingCount)
+    copy.dayNoBuildingCount.set(this.dayNoBuildingCount)
+    return copy
   }
 
   private setMask(arr: Uint32Array, base: number, mask: BitMask64, on: boolean): void {

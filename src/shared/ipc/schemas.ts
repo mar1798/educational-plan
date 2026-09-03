@@ -372,6 +372,17 @@ export const pairGridSaveInput = z.object({ rows: z.array(pairGridRowInput).min(
   { message: 'Время начала пары должно быть раньше времени окончания', path: ['rows'] },
 )
 
+// Веса мягких критериев солвера (§5.5, этап 6) — редактируются целиком на странице настроек.
+const constraintWeightRowInput = z.object({
+  id: z.number().int().positive(),
+  rowVersion: z.number().int().positive(),
+  weight: z.number().int().min(0).max(100),
+  enabled: z.boolean(),
+})
+
+export const constraintWeightsListInput = z.object({})
+export const constraintWeightsSaveInput = z.object({ rows: z.array(constraintWeightRowInput).min(1) })
+
 // Учебный план (§3.1–3.4).
 export const curriculaListInput = z.object({ specialityId: z.number().int().positive().optional(), includeArchived: z.boolean().optional() })
 

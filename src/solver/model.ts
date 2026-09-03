@@ -49,16 +49,40 @@ export const DEFAULT_WEIGHTS: Weights = {
   teacherDays: 2,
 }
 
+export type WeightCode = keyof Weights
+
+/** camelCase-поле `Weights` ↔ `constraint_weight.code` в БД (§4.3, snake_case) — единственное место сопоставления. */
+export const WEIGHT_CODES: Record<WeightCode, string> = {
+  studentGaps: 'student_gaps',
+  teacherGaps: 'teacher_gaps',
+  spread: 'spread',
+  difficultyEarly: 'difficulty_early',
+  clinicalGrouping: 'clinical_grouping',
+  teacherPreference: 'teacher_preference',
+  latePair: 'late_pair',
+  clinicalBlockStart: 'clinical_block_start',
+  roomMissing: 'room_missing',
+  teacherDays: 'teacher_days',
+}
+
 export type RoomType = 'lecture' | 'practice' | 'seminar' | 'lab' | 'phantom' | 'computer' | 'gym'
 export type ClinicalMode = 'full_day' | 'block' | 'free'
 export type Parity = 'all' | 'odd' | 'even'
 export type LessonKind = 'theory' | 'practice' | 'seminar' | 'lab'
+
+/** Одна запись «мягкой» недоступности преподавателя (`teacher_absence.kind = 'soft'`) — §5.5 `teacher_preference`. */
+export interface SoftUnavailability {
+  mask: BitMask64
+  weight: number
+}
 
 export interface TeacherInfo {
   idx: number
   id: number
   /** Биты слотов, где преподаватель ЗАНЯТ жёстко (кроме собственно занятий) — недоступность §4.3. */
   unavailable: BitMask64
+  /** «Мягкая» недоступность (§4.3 `kind='soft'`): нарушение штрафуется, а не запрещается. */
+  softUnavailable: readonly SoftUnavailability[]
   maxPairsPerDay: number | null
 }
 
@@ -176,7 +200,7 @@ export interface UnplacedUnit {
   }
 }
 
-export type StopReason = 'completed' | 'time_budget' | 'max_iterations' | 'cancelled'
+export type StopReason = 'completed' | 'time_budget' | 'max_iterations' | 'no_improvement' | 'cancelled'
 
 export interface SolverOutput {
   assignments: Assignment[]

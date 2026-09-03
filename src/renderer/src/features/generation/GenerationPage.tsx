@@ -2,10 +2,38 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Discipline, ScheduleTemplate, StudyGroup, Teacher } from '../../../../shared/ipc/contract'
 import { describeUnplaced } from '../../../../shared/schedule/messages'
+import { WEIGHT_BREAKDOWN_LABEL, weightKeyForCode } from '../../../../shared/schedule/weights'
 import type { SolverInput, SolverOutput, SolverProgress, Unit } from '../../../../solver/model'
 import { api } from '../../api/client'
 import { notifyError, notifySuccess } from '../../ui/toast'
 import { useSemesterOptions } from '../load/useSemesterOptions'
+
+const PHASE_LABEL: Record<SolverProgress['phase'], string> = {
+  greedy: 'Жадная расстановка',
+  search: 'Локальный поиск (улучшение расписания)',
+}
+
+interface BreakdownRow {
+  code: string
+  label: string
+  raw: number
+  weighted: number
+  percent: number
+}
+
+function breakdownRows(output: SolverOutput, input: SolverInput): BreakdownRow[] {
+  const weighted = Object.entries(output.breakdown)
+    .filter(([code]) => code !== 'unplaced')
+    .map(([code, raw]) => {
+      const key = weightKeyForCode(code)
+      const weight = key ? input.weights[key] : 0
+      return { code, label: key ? WEIGHT_BREAKDOWN_LABEL[key] : code, raw, weighted: raw * weight }
+    })
+  const total = weighted.reduce((sum, r) => sum + r.weighted, 0)
+  return weighted
+    .map((r) => ({ ...r, percent: total > 0 ? Math.round((r.weighted / total) * 100) : 0 }))
+    .sort((a, b) => b.weighted - a.weighted)
+}
 
 /** Экран генерации расписания (§5.7-5.8 PLAN.md): запуск солвера, прогресс, отмена, применение. */
 export function GenerationPage() {
@@ -173,7 +201,9 @@ export function GenerationPage() {
         <div className="generation-progress">
           <progress value={progress?.percent ?? 0} max={100} />
           <span>
-            {progress ? `${progress.percent}% · размещено ${progress.placed} из ${progress.total}` : 'Запуск…'}
+            {progress
+              ? `${PHASE_LABEL[progress.phase]} · ${progress.percent}% · размещено ${progress.placed} из ${progress.total}`
+              : 'Запуск…'}
           </span>
         </div>
       )}
@@ -184,6 +214,22 @@ export function GenerationPage() {
             Размещено {draft.output.assignments.length} из {draft.input.units.length}, штраф {draft.output.penalty},
             за {draft.output.elapsedMs} мс ({draft.output.iterations} итераций)
           </p>
+
+          {draft.output.penalty > 0 && (
+            <details className="penalty-breakdown">
+              <summary>Из чего складывается штраф</summary>
+              <ul>
+                {breakdownRows(draft.output, draft.input)
+                  .filter((r) => r.raw > 0)
+                  .map((r) => (
+                    <li key={r.code}>
+                      {r.label}: {r.raw} (вклад {r.percent} %)
+                    </li>
+                  ))}
+              </ul>
+            </details>
+          )}
+
           <div className="toolbar">
             <button onClick={() => void handleApply()} disabled={applying}>
               {applying ? 'Применяю…' : 'Применить'}

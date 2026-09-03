@@ -5,6 +5,7 @@ import { CalendarPeriodsPage } from '../features/calendar/CalendarPeriodsPage'
 import { CalendarYearPage } from '../features/calendar/CalendarYearPage'
 import { SemestersPage } from '../features/calendar/SemestersPage'
 import { CmcPage } from '../features/cmc/CmcPage'
+import { ConstraintWeightsPage } from '../features/settings/ConstraintWeightsPage'
 import { CurriculaPage } from '../features/curriculum/CurriculaPage'
 import { CurriculumEditorPage } from '../features/curriculum/CurriculumEditorPage'
 import { DisciplinesPage } from '../features/disciplines/DisciplinesPage'
@@ -52,6 +53,7 @@ export const router = createHashRouter([
       { path: 'schedule-template', element: <ScheduleTemplatePage /> },
       { path: 'schedule-conflicts', element: <ConflictsPage /> },
       { path: 'generation', element: <GenerationPage /> },
+      { path: 'constraint-weights', element: <ConstraintWeightsPage /> },
       { path: 'system', element: <SystemPage /> },
       { path: 'operations', element: <OperationsPage /> },
       { path: 'pair-grid', element: <PairGridPage /> },

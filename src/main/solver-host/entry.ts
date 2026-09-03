@@ -8,10 +8,13 @@ function post(message: HostToMainMessage) {
 
 let cancelled = false
 
-function run(input: Parameters<typeof solve>[0]) {
+// solve() теперь асинхронна (этап 6, §5.6 фаза 2 — локальный поиск отдаёт event loop
+// по ходу расчёта, см. localSearch.ts), поэтому 'cancel' долетает и обрабатывается
+// именно во время await, а не только после того, как весь расчёт уже завершился.
+async function run(input: Parameters<typeof solve>[0]) {
   cancelled = false
   try {
-    const output = solve(input, {
+    const output = await solve(input, {
       onProgress: (progress) => post({ type: 'progress', progress }),
       isCancelled: () => cancelled,
     })
@@ -25,7 +28,7 @@ function run(input: Parameters<typeof solve>[0]) {
 process.parentPort.on('message', (event: MessageEvent) => {
   const message = event.data as MainToHostMessage
   if (message.type === 'start') {
-    run(message.input)
+    void run(message.input)
   } else if (message.type === 'cancel') {
     cancelled = true
   }

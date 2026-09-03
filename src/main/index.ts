@@ -4,6 +4,7 @@ import { app, BrowserWindow } from 'electron'
 import { createBackup, registerBackup, snapshotDbFile } from './db/backup/backup'
 import { createDb } from './db/client'
 import { runMigrations } from './db/migrate'
+import { ensureConstraintWeights } from './db/repo/constraint-weights'
 import { ensurePairGrid } from './db/repo/pair-grid'
 import { ensureTeacherCategories } from './db/repo/seed'
 import { registerAcademicYearsHandlers } from './ipc/academic-years'
@@ -13,6 +14,7 @@ import { registerBuildingsHandlers } from './ipc/buildings'
 import { registerCalendarDaysHandlers } from './ipc/calendar-days'
 import { registerCalendarPeriodsHandlers } from './ipc/calendar-periods'
 import { registerCmcHandlers } from './ipc/cmc'
+import { registerConstraintWeightsHandlers } from './ipc/constraint-weights'
 import { registerCurriculumHandlers } from './ipc/curriculum'
 import { registerDisciplinesHandlers } from './ipc/disciplines'
 import { registerExportHandlers } from './ipc/export'
@@ -64,6 +66,7 @@ async function bootstrap() {
   createBackup(sqlite, db, path, 'schedule')
   ensureTeacherCategories(db)
   ensurePairGrid(db)
+  ensureConstraintWeights(db)
 
   registerSettingsHandlers(db)
   registerOperationsHandlers(db)
@@ -85,6 +88,7 @@ async function bootstrap() {
   registerCalendarDaysHandlers(db)
   registerCalendarPeriodsHandlers(db)
   registerPairGridHandlers(db)
+  registerConstraintWeightsHandlers(db)
   registerCurriculumHandlers(db)
   registerTeachingLoadHandlers(db)
   registerScheduleTemplateHandlers(db)
