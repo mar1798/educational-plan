@@ -374,6 +374,98 @@ export interface TeacherBalanceRow {
   overNorm: boolean
 }
 
+// Расписание (§4, §5.8): шаблон недели с версиями, записи 6×6, материализация в даты.
+// Схема (schedule_template/template_entry/lesson/lesson_group) смоделирована в этапе 1 —
+// здесь только домен-типы IPC-контракта этапа 4.
+export interface ScheduleTemplate {
+  id: number
+  semesterId: number
+  versionNo: number
+  effectiveFrom: string
+  effectiveTo: string | null
+  status: 'draft' | 'active' | 'archived'
+  basedOnId: number | null
+  note: string | null
+  rowVersion: number
+}
+
+export interface TemplateEntryAttendee {
+  groupId: number
+  groupName: string
+  subgroupId: number | null
+  subgroupNo: number | null
+  posFrom: number
+  posTo: number
+}
+
+export interface TemplateEntryView {
+  id: number
+  templateId: number
+  dayOfWeek: number
+  pairNo: number
+  weekParity: 'all' | 'odd' | 'even'
+  isLocked: boolean
+  source: 'solver' | 'manual'
+  roomId: number | null
+  roomLabel: string | null
+  teacherId: number
+  teacherName: string
+  teachingLoadId: number
+  disciplineId: number
+  disciplineName: string
+  lessonKind: 'theory' | 'practice' | 'seminar' | 'lab'
+  academicHours: number
+  targetLabel: string
+  attendees: TemplateEntryAttendee[]
+  rowVersion: number
+}
+
+export interface UnassignedLoadRow {
+  teachingLoadId: number
+  teacherId: number
+  teacherName: string
+  disciplineName: string
+  targetLabel: string
+  lessonKind: 'theory' | 'practice' | 'seminar' | 'lab'
+  hoursPlanned: number
+  hoursAssigned: number
+  hoursRemaining: number
+  attendees: TemplateEntryAttendee[]
+}
+
+export interface RolloutChangeItem {
+  date: string
+  entryId: number
+  action: 'create' | 'update' | 'cancel'
+  description: string
+}
+
+export interface RolloutPreview {
+  toCreate: number
+  toUpdate: number
+  toCancel: number
+  items: RolloutChangeItem[]
+}
+
+export interface RolloutApplyResult {
+  operationId: number
+  created: number
+  updated: number
+  cancelled: number
+}
+
+export interface ScheduleConflictView {
+  date: string
+  dayOfWeek: number
+  pairNo: number
+  description: string
+  lessonAId: number
+  lessonBId: number
+  semesterId: number | null
+  templateId: number | null
+  groupId: number | null
+}
+
 // Универсальный мастер импорта (§3.8): main читает файл (ExcelJS) и хранит профили,
 // разбор сетки — общие чистые функции shared/import/engine.ts, переиспользуемые и в renderer
 // для живого предпросмотра без обращения к main на каждое изменение настройки.
@@ -556,6 +648,21 @@ export interface IpcContract {
   // Баланс нагрузки (§3.7): «сколько ещё не роздано» / «сколько набрано».
   'loadBalance:byGroup': { in: { semesterId: number }; out: GroupBalanceRow[] }
   'loadBalance:byTeacher': { in: { semesterId: number }; out: TeacherBalanceRow[] }
+
+  // Шаблон расписания (§4.1–4.11): версии на семестр, записи 6×6, материализация.
+  'scheduleTemplates:list': { in: { semesterId: number }; out: ScheduleTemplate[] }
+  'scheduleTemplates:create': { in: ScheduleTemplateCreateInput; out: ScheduleTemplate }
+  'scheduleTemplates:activate': { in: { id: number; rowVersion: number }; out: { ok: true } }
+  'scheduleTemplates:archive': { in: { id: number; rowVersion: number }; out: { ok: true } }
+  'scheduleTemplates:entries': { in: { templateId: number }; out: TemplateEntryView[] }
+  'scheduleTemplates:unassignedLoad': { in: { templateId: number }; out: UnassignedLoadRow[] }
+  'scheduleTemplates:placeEntry': { in: PlaceEntryInput; out: TemplateEntryView }
+  'scheduleTemplates:moveEntry': { in: MoveEntryInput; out: TemplateEntryView }
+  'scheduleTemplates:setLocked': { in: { id: number; rowVersion: number; isLocked: boolean }; out: { ok: true } }
+  'scheduleTemplates:removeEntry': { in: { id: number; rowVersion: number }; out: { ok: true } }
+  'scheduleTemplates:rolloutPreview': { in: RolloutRangeInput; out: RolloutPreview }
+  'scheduleTemplates:rolloutApply': { in: RolloutRangeInput; out: RolloutApplyResult }
+  'schedule:conflicts': { in: { dateFrom: string; dateTo: string }; out: ScheduleConflictView[] }
 
   // Мастер импорта (§3.8): файл → лист → область данных → сопоставление → предпросмотр → применение.
   'import:pickFile': { in: Record<string, never>; out: { filePath: string; fileName: string } | { cancelled: true } }
@@ -789,6 +896,37 @@ export interface OtherLoadSaveInput {
   hours: number
   groupId: number | null
   note: string | null
+}
+
+export interface ScheduleTemplateCreateInput {
+  semesterId: number
+  effectiveFrom: string
+  note: string | null
+  copyFromTemplateId?: number | null
+}
+
+export interface PlaceEntryInput {
+  templateId: number
+  teachingLoadId: number
+  dayOfWeek: number
+  pairNo: number
+  weekParity: TemplateEntryView['weekParity']
+  roomId: number | null
+}
+
+export interface MoveEntryInput {
+  id: number
+  rowVersion: number
+  dayOfWeek: number
+  pairNo: number
+  weekParity: TemplateEntryView['weekParity']
+  roomId: number | null
+}
+
+export interface RolloutRangeInput {
+  templateId: number
+  dateFrom: string
+  dateTo: string
 }
 
 export interface ImportProfileSaveInput {

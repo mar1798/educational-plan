@@ -636,6 +636,137 @@ table.data-table {
   box-shadow: 0 0 0 2px var(--color-accent);
 }
 
+/* Шаблон расписания: сетка 6×6 и drag-and-drop (§4.2–4.7). */
+
+.schedule-layout {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.schedule-grid {
+  display: grid;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.schedule-grid-corner {
+  background: transparent;
+}
+
+.schedule-grid-day-header,
+.schedule-grid-pair-header {
+  padding: 6px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-align: center;
+  white-space: pre-line;
+}
+
+.schedule-cell {
+  min-height: 64px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 3px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.schedule-cell-over {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent);
+}
+
+.schedule-cell-conflict {
+  border-color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 10%, var(--color-surface));
+}
+
+.schedule-chip {
+  background: #eef2ff;
+  border: 1px solid var(--color-accent);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 11px;
+  cursor: grab;
+  position: relative;
+}
+
+.schedule-chip-locked {
+  cursor: default;
+  background: var(--color-bg);
+  border-color: var(--color-border);
+}
+
+.schedule-chip-dragging {
+  opacity: 0.5;
+}
+
+.schedule-chip-lock {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0;
+  line-height: 1;
+}
+
+.schedule-chip-title {
+  font-weight: 600;
+}
+
+.schedule-chip-sub {
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unassigned-panel {
+  width: 260px;
+  flex-shrink: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 12px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.unassigned-panel h3 {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.unassigned-card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  cursor: grab;
+}
+
+.unassigned-card-dragging {
+  opacity: 0.5;
+}
+
+.unassigned-card-hours {
+  margin-top: 4px;
+  color: var(--color-accent);
+  font-size: 11px;
+}
+
 .day-cell-holiday-toggle {
   position: absolute;
   top: -4px;

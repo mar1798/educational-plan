@@ -38,6 +38,13 @@ export const navSections: NavSection[] = [
     items: [{ label: 'Импорт из Excel', path: '/import' }],
   },
   {
+    title: 'Расписание',
+    items: [
+      { label: 'Шаблон недели', path: '/schedule-template' },
+      { label: 'Конфликты', path: '/schedule-conflicts' },
+    ],
+  },
+  {
     title: 'Календарь',
     items: [
       { label: 'Учебные годы', path: '/academic-years' },

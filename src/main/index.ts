@@ -23,6 +23,7 @@ import { registerOperationsHandlers } from './ipc/operations'
 import { registerPairGridHandlers } from './ipc/pair-grid'
 import { registerSemestersHandlers } from './ipc/semesters'
 import { registerRoomsHandlers } from './ipc/rooms'
+import { registerScheduleTemplateHandlers } from './ipc/schedule-template'
 import { registerSettingsHandlers } from './ipc/settings'
 import { registerSpecialitiesHandlers } from './ipc/specialities'
 import { registerTeacherAbsencesHandlers } from './ipc/teacher-absences'
@@ -86,6 +87,7 @@ async function bootstrap() {
   registerPairGridHandlers(db)
   registerCurriculumHandlers(db)
   registerTeachingLoadHandlers(db)
+  registerScheduleTemplateHandlers(db)
   registerImportHandlers({ db, getWindow: () => mainWindow })
 
   mainWindow = createMainWindow()

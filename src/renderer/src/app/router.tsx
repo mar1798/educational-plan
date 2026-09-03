@@ -16,6 +16,8 @@ import { StreamsPage } from '../features/load/StreamsPage'
 import { OperationsPage } from '../features/operations/OperationsPage'
 import { PairGridPage } from '../features/settings/PairGridPage'
 import { RoomsPage } from '../features/rooms/RoomsPage'
+import { ConflictsPage } from '../features/schedule/ConflictsPage'
+import { ScheduleTemplatePage } from '../features/schedule/ScheduleTemplatePage'
 import { SpecialitiesPage } from '../features/specialities/SpecialitiesPage'
 import { SystemPage } from '../features/system/SystemPage'
 import { TeachersPage } from '../features/teachers/TeachersPage'
@@ -46,6 +48,8 @@ export const router = createHashRouter([
       { path: 'streams', element: <StreamsPage /> },
       { path: 'load-balance', element: <LoadBalancePage /> },
       { path: 'import', element: <ImportWizardPage /> },
+      { path: 'schedule-template', element: <ScheduleTemplatePage /> },
+      { path: 'schedule-conflicts', element: <ConflictsPage /> },
       { path: 'system', element: <SystemPage /> },
       { path: 'operations', element: <OperationsPage /> },
       { path: 'pair-grid', element: <PairGridPage /> },

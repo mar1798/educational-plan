@@ -520,6 +520,67 @@ export const otherLoadDeleteInput = z.object({ id: z.number().int().positive() }
 export const loadBalanceByGroupInput = z.object({ semesterId: z.number().int().positive() })
 export const loadBalanceByTeacherInput = z.object({ semesterId: z.number().int().positive() })
 
+// Расписание (§4.1–4.11): шаблон недели с версиями и записи 6×6.
+const weekParity = z.enum(['all', 'odd', 'even'])
+
+export const scheduleTemplatesListInput = z.object({ semesterId: z.number().int().positive() })
+
+export const scheduleTemplateCreateInput = z.object({
+  semesterId: z.number().int().positive(),
+  effectiveFrom: z.string().min(1, 'Укажите дату вступления в силу'),
+  note: z.string().nullable(),
+  copyFromTemplateId: z.number().int().positive().nullable().optional(),
+})
+
+export const scheduleTemplateActivateInput = z.object({ id: z.number().int().positive(), rowVersion: z.number().int().positive() })
+export const scheduleTemplateArchiveInput = z.object({ id: z.number().int().positive(), rowVersion: z.number().int().positive() })
+export const scheduleTemplateEntriesInput = z.object({ templateId: z.number().int().positive() })
+export const scheduleTemplateUnassignedLoadInput = z.object({ templateId: z.number().int().positive() })
+
+export const placeEntryInput = z.object({
+  templateId: z.number().int().positive(),
+  teachingLoadId: z.number().int().positive(),
+  dayOfWeek: z.number().int().min(1).max(6),
+  pairNo: z.number().int().min(1).max(6),
+  weekParity,
+  roomId: z.number().int().positive().nullable(),
+})
+
+export const moveEntryInput = z.object({
+  id: z.number().int().positive(),
+  rowVersion: z.number().int().positive(),
+  dayOfWeek: z.number().int().min(1).max(6),
+  pairNo: z.number().int().min(1).max(6),
+  weekParity,
+  roomId: z.number().int().positive().nullable(),
+})
+
+export const setEntryLockedInput = z.object({
+  id: z.number().int().positive(),
+  rowVersion: z.number().int().positive(),
+  isLocked: z.boolean(),
+})
+
+export const removeEntryInput = z.object({ id: z.number().int().positive(), rowVersion: z.number().int().positive() })
+
+function requireOrderedDateFromTo<T extends { dateFrom: string; dateTo: string }>(v: T, ctx: z.RefinementCtx) {
+  if (v.dateFrom > v.dateTo) {
+    ctx.addIssue({ code: 'custom', message: 'Дата окончания раньше даты начала', path: ['dateTo'] })
+  }
+}
+
+export const rolloutRangeInput = z
+  .object({
+    templateId: z.number().int().positive(),
+    dateFrom: z.string().min(1, 'Укажите дату начала'),
+    dateTo: z.string().min(1, 'Укажите дату окончания'),
+  })
+  .superRefine(requireOrderedDateFromTo)
+
+export const scheduleConflictsInput = z
+  .object({ dateFrom: z.string().min(1, 'Укажите дату начала'), dateTo: z.string().min(1, 'Укажите дату окончания') })
+  .superRefine(requireOrderedDateFromTo)
+
 // Мастер импорта (§3.8): значения ячеек — string|number|null, разбор самой сетки
 // не зависит от целевой сущности (engine.ts), поэтому схема входа здесь намеренно нестрогая.
 const targetEntity = z.enum(['curriculum', 'teaching_load', 'teacher', 'calendar_period'])
