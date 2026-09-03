@@ -109,7 +109,10 @@ export function ScheduleGrid({ days, pairNumbers, pairLabel, entries, hoverConfl
   }
 
   return (
-    <div className="schedule-grid" style={{ gridTemplateColumns: `80px repeat(${days.length}, 1fr)` }}>
+    // minmax(0, 1fr), а не 1fr: у 1fr минимум равен min-content, и длинное название вроде
+    // «Неотложная помощь на догоспитальном этапе» распирает колонки шире контейнера — сетка
+    // вылезала вправо и последний день недели уходил под панель нераспределённых (§4.2).
+    <div className="schedule-grid" style={{ gridTemplateColumns: `80px repeat(${days.length}, minmax(0, 1fr))` }}>
       <div className="schedule-grid-corner" />
       {days.map((d) => (
         <div key={`h-${d}`} className="schedule-grid-day-header">

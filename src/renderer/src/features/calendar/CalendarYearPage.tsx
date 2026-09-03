@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { AcademicYear, CalendarDay, Semester } from '../../../../shared/ipc/contract'
 import { api } from '../../api/client'
 import { EntityHistoryPanel } from '../../ui/EntityHistoryPanel'
-import { WEEKDAY_LABEL, ruCommon } from '../../ui/locale'
+import { WEEKDAY_SHORT, ruCommon } from '../../ui/locale'
 import { notifyError, notifySuccess } from '../../ui/toast'
 
 const KIND_LABEL: Record<CalendarDay['kind'], string> = {
@@ -207,12 +207,11 @@ export function CalendarYearPage() {
                 {MONTH_LABEL[month]} {y}
               </h3>
               <div className="month-grid">
-                {Object.values(WEEKDAY_LABEL).map((label) => (
-                  <div className="month-grid-weekday" key={label}>
-                    {label.slice(0, 2)}
+                {[1, 2, 3, 4, 5, 6, 7].map((d) => (
+                  <div className="month-grid-weekday" key={d}>
+                    {WEEKDAY_SHORT[d]}
                   </div>
                 ))}
-                <div className="month-grid-weekday">Вс</div>
                 {Array.from({ length: mondayFirstWeekday(y, month, 1) }).map((_, i) => (
                   <div key={`pad-${i}`} />
                 ))}

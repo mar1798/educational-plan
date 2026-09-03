@@ -29,7 +29,9 @@ function todayIso(): string {
 function buildColumns(specialityNameById: Map<number, string>): ColumnDef<StudyGroup>[] {
   return [
     { accessorKey: 'name', header: 'Группа' },
-    { id: 'speciality', header: 'Специальность', accessorFn: (row) => specialityNameById.get(row.specialityId) ?? row.specialityId },
+    // Пока справочник специальностей не доехал, в колонке стоит прочерк, а не сырой id:
+    // список групп приходит раньше, и таблица успевала показать «3» вместо «Акушерское дело».
+    { id: 'speciality', header: 'Специальность', accessorFn: (row) => specialityNameById.get(row.specialityId) ?? '—' },
     { accessorKey: 'course', header: 'Курс' },
     { accessorKey: 'admissionYear', header: 'Год набора' },
     { accessorKey: 'studentsCount', header: 'Студентов' },

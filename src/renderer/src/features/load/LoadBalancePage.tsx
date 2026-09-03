@@ -12,11 +12,20 @@ const groupColumns: ColumnDef<GroupBalanceRow>[] = [
   { accessorKey: 'plannedHours', header: 'По плану, ч' },
   { accessorKey: 'assignedHours', header: 'Роздано, ч' },
   {
+    // Отрицательный остаток — это не «не роздано минус столько-то», а перебор над планом:
+    // раздали больше, чем стоит в учебном плане. Подписью и знаком показываем именно это,
+    // иначе строка «Не роздано −648» читается как ошибка расчёта.
     id: 'remaining',
-    header: 'Не роздано, ч',
-    cell: ({ row }) => (
-      <span className={row.original.remainingHours !== 0 ? 'badge badge-warning' : 'badge'}>{row.original.remainingHours}</span>
-    ),
+    header: 'Остаток плана, ч',
+    cell: ({ row }) => {
+      const remaining = row.original.remainingHours
+      if (remaining === 0) return <span className="badge">роздано полностью</span>
+      return (
+        <span className="badge badge-warning">
+          {remaining > 0 ? `не роздано ${remaining}` : `перероздано ${-remaining}`}
+        </span>
+      )
+    },
   },
   {
     // §3.7a: недельный лимит виден до генерации расписания, а не только в момент,

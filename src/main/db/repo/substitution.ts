@@ -52,6 +52,9 @@ export interface TeacherLessonRow {
   substitutionNote: string | null
   /** Занятие уже передано другому преподавателю: этот его больше не ведёт, действовать по нему нечего. */
   handedOver: boolean
+  /** Кто ведёт занятие сейчас — у переданного по замене это уже заместивший преподаватель. */
+  currentTeacherId: number
+  currentTeacherName: string
 }
 
 /** Короткая подпись строки `substitution` для карточки занятия (§этап 7, п.29). */
@@ -101,6 +104,7 @@ export function listTeacherLessons(tx: DbLike, teacherId: number, dateFrom: stri
       })
       .join(', ')
     const roomLabel = l.roomId != null ? (roomLabelOf(tx, l.roomId) ?? null) : null
+    const currentTeacher = tx.select().from(teacher).where(eq(teacher.id, l.teacherId)).get()
     const subs = tx.select().from(substitution).where(eq(substitution.lessonId, l.id)).all()
     const last = subs.at(-1)
 
@@ -116,6 +120,8 @@ export function listTeacherLessons(tx: DbLike, teacherId: number, dateFrom: stri
       hasSubstitution: last != null,
       substitutionNote: last != null ? substitutionNoteOf(tx, last) : null,
       handedOver: l.teacherId !== teacherId,
+      currentTeacherId: l.teacherId,
+      currentTeacherName: currentTeacher ? teacherFullName(currentTeacher) : `#${l.teacherId}`,
     }
   })
 }

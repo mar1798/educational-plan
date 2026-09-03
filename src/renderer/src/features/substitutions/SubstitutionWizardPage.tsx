@@ -225,13 +225,14 @@ export function SubstitutionWizardPage() {
     })
   }, [])
 
-  async function loadLessons() {
-    if (teacherId === '') {
+  async function loadLessons(forTeacherId?: number) {
+    const target = forTeacherId ?? teacherId
+    if (target === '') {
       notifyError('Выберите преподавателя')
       return
     }
     setActive(null)
-    const res = await api.invoke('substitutions:teacherLessons', { teacherId, dateFrom, dateTo })
+    const res = await api.invoke('substitutions:teacherLessons', { teacherId: target, dateFrom, dateTo })
     if (res.ok) setLessons(res.value)
     else notifyError(res.error.message)
   }
@@ -283,6 +284,21 @@ export function SubstitutionWizardPage() {
                   <span>
                     <span className="badge">{STATUS_LABEL[l.status]}</span>
                     {l.substitutionNote && <span className="badge">{l.substitutionNote}</span>}
+                    {/* Переданное по замене занятие ведёт уже другой преподаватель, и действия
+                        над ним доступны в его списке. Без этой кнопки строка выглядела тупиком:
+                        отменить ошибочную замену было неоткуда. */}
+                    {l.handedOver && l.status === 'planned' && (
+                      <button
+                        type="button"
+                        className="btn-link"
+                        onClick={() => {
+                          setTeacherId(l.currentTeacherId)
+                          void loadLessons(l.currentTeacherId)
+                        }}
+                      >
+                        Открыть у {l.currentTeacherName}
+                      </button>
+                    )}
                     {canAct && (
                       <>
                         <button type="button" className="btn-link" onClick={() => setActive({ lessonId: l.lessonId, kind: 'swap' })}>

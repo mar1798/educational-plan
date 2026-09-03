@@ -7,14 +7,19 @@ import { notifyError, notifySuccess } from '../../ui/toast'
 
 interface RolloutDialogProps {
   templateId: number
+  /** Границы выбранного семестра — ими предзаполняется диапазон раскатки. */
+  defaultDateFrom?: string
+  defaultDateTo?: string
   onClose: () => void
   onApplied: () => void
 }
 
 /** Раскатка шаблона на диапазон дат (§4.8–4.10): сначала предпросмотр, применение — отдельным шагом. */
-export function RolloutDialog({ templateId, onClose, onApplied }: RolloutDialogProps) {
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+export function RolloutDialog({ templateId, defaultDateFrom, defaultDateTo, onClose, onApplied }: RolloutDialogProps) {
+  // Семестр на экране уже выбран, и раскатывают почти всегда его целиком — вводить те же
+  // даты руками незачем, поправить их в полях по-прежнему можно.
+  const [dateFrom, setDateFrom] = useState(defaultDateFrom ?? '')
+  const [dateTo, setDateTo] = useState(defaultDateTo ?? '')
   const [preview, setPreview] = useState<RolloutPreview | null>(null)
   const [expanded, setExpanded] = useState(false)
   const [busy, setBusy] = useState(false)

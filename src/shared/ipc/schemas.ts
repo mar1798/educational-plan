@@ -11,7 +11,7 @@ export const generationStartInput = z.object({
   seed: z.number().int().optional(),
   timeBudgetMs: z.number().int().positive().optional(),
 })
-export const generationCancelInput = z.object({ jobId: z.string() })
+export const generationCancelInput = z.object({ jobId: z.string(), keepResult: z.boolean().optional() })
 export const generationApplyInput = z.object({ jobId: z.string() })
 
 const operationKind = z.enum(['generate', 'rollout', 'import', 'bulk_edit', 'restore', 'substitution'])

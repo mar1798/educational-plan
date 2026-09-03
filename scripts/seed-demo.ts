@@ -56,8 +56,9 @@ function defaultDbPath(): string {
 // Справочные данные (фиксированные списки — генератор детерминирован)
 
 const SPECIALITIES = [
-  { code: 'СД', name: 'Сестринское дело', qualification: 'Медицинская сестра / медицинский брат', semestersTotal: 8 },
-  { code: 'ЛД', name: 'Лечебное дело', qualification: 'Фельдшер', semestersTotal: 8 },
+  { code: 'СД', name: 'Сестринское дело', qualification: 'Медицинская сестра / медицинский брат', semestersTotal: 6 },
+  // Решение №42: у Лечебного дела 7 семестров (3.5 года), у остальных — 6.
+  { code: 'ЛД', name: 'Лечебное дело', qualification: 'Фельдшер', semestersTotal: 7 },
   { code: 'АД', name: 'Акушерское дело', qualification: 'Акушерка / акушер', semestersTotal: 6 },
   { code: 'Л', name: 'Лабораторная диагностика', qualification: 'Медицинский лабораторный техник', semestersTotal: 6 },
   { code: 'СО', name: 'Стоматология ортопедическая', qualification: 'Зубной техник', semestersTotal: 6 },
@@ -131,7 +132,6 @@ const PLAN_BY_SPECIALITY: Record<SpecialityCode, { theory: string[]; practice: s
     { theory: ['Кыргызский язык', 'Иностранный язык', 'История', 'Анатомия и физиология человека', 'Основы латинского языка', 'Информатика'], practice: ['Физическая культура', 'Теория сестринского дела'] },
     { theory: ['Русский язык', 'Основы патологии', 'Гигиена и экология человека', 'Фармакология', 'Психология общения', 'Математика'], practice: ['Основы микробиологии и иммунологии', 'Сестринский уход в терапии'] },
     { theory: ['Иностранный язык', 'Генетика человека', 'Фармакология', 'Безопасность жизнедеятельности', 'Психология общения', 'История'], practice: ['Сестринский уход в хирургии', 'Сестринский уход в педиатрии'] },
-    { theory: ['Основы патологии', 'Анатомия и физиология человека', 'Гигиена и экология человека', 'Безопасность жизнедеятельности', 'Математика', 'Информатика'], practice: ['Основы реабилитации', 'Сестринский уход в терапии'] },
   ],
   ЛД: [
     { theory: ['Кыргызский язык', 'Иностранный язык', 'Анатомия и физиология человека', 'Основы латинского языка', 'Информатика', 'История'], practice: ['Физическая культура', 'Неотложная помощь на догоспитальном этапе'] },
@@ -163,7 +163,7 @@ const PLAN_BY_SPECIALITY: Record<SpecialityCode, { theory: string[]; practice: s
 
 /** Сколько групп на каждом курсе специальности — в сумме 39 (§9.2 `full-college`). */
 const GROUPS_PER_COURSE: Record<SpecialityCode, number[]> = {
-  СД: [4, 3, 3, 2],
+  СД: [5, 4, 3],
   ЛД: [3, 2, 2, 1],
   АД: [2, 2, 1],
   Л: [2, 1, 1],
@@ -388,54 +388,64 @@ function seedDemo(db: Db): { counters: Counters; templateId: number; semesterId:
   }
   const planRowsBySpecCourse = new Map<string, PlanRow[]>()
 
+  // Учебный план утверждается на набор и живёт весь срок обучения, поэтому план заводится
+  // на каждый год набора, который сейчас учится: у группы 2 курса (набор ADMISSION_BASE−1)
+  // свой план, а не план этого года. Раньше план был один — на ADMISSION_BASE, и у всех
+  // групп старше первого курса «Баланс нагрузки» показывал «по плану 0 ч».
   for (const spec of SPECIALITIES) {
     const specialityId = specialityIdByCode.get(spec.code)!
-    const curriculumId = createRow(db, schema.curriculum, {
-      specialityId,
-      admissionYear: ADMISSION_BASE,
-      name: `${spec.code} — набор ${ADMISSION_BASE}`,
-      status: 'approved',
-      approvedAt: VALID_FROM,
-      approvedBy: 'Завуч',
-    }).id as number
-    count('учебных планов')
-
     const perCourse = PLAN_BY_SPECIALITY[spec.code]
-    perCourse.forEach((sem, courseIdx) => {
-      const course = courseIdx + 1
-      const semesterNo = course * 2 - 1
-      const names = [...sem.theory, ...sem.practice]
-      const rows: PlanRow[] = []
-      names.forEach((name, i) => {
-        const spec2 = disciplineSpecByName.get(name)!
-        const isPractice = i >= sem.theory.length
-        const credits = CREDITS_PER_ROW[i]!
-        const hoursTotal = credits * 30 // §3.1: кредиты × 30 = всего часов
-        const hoursClassroom = 72 // 2 пары в неделю × 18 недель
-        const created = createCurriculumRow(
-          db,
-          curriculumId,
-          {
-            disciplineId: disciplineIdByName.get(name)!,
-            course,
-            semesterNo,
-            credits,
-            hoursTotal,
-            hoursClassroom,
-            hoursTheory: isPractice ? 0 : hoursClassroom,
-            hoursPractice: isPractice ? hoursClassroom : 0,
-            hoursSeminar: 0,
-            hoursLab: 0,
-            hoursSrs: hoursTotal - hoursClassroom,
-            controlSemester: spec2.block === 3 ? semesterNo : null,
-          },
-          VALID_FROM,
-        )
-        rows.push({ id: created.id as number, disciplineName: name, kind: isPractice ? 'practice' : 'theory' })
-        count('строк учебного плана')
+
+    for (let intakeIdx = 0; intakeIdx < perCourse.length; intakeIdx++) {
+      const admissionYear = ADMISSION_BASE - intakeIdx
+      const curriculumId = createRow(db, schema.curriculum, {
+        specialityId,
+        admissionYear,
+        name: `${spec.code} — набор ${admissionYear}`,
+        status: 'approved',
+        approvedAt: VALID_FROM,
+        approvedBy: 'Завуч',
+      }).id as number
+      count('учебных планов')
+
+      perCourse.forEach((sem, courseIdx) => {
+        const course = courseIdx + 1
+        const semesterNo = course * 2 - 1
+        const names = [...sem.theory, ...sem.practice]
+        const rows: PlanRow[] = []
+        names.forEach((name, i) => {
+          const spec2 = disciplineSpecByName.get(name)!
+          const isPractice = i >= sem.theory.length
+          const credits = CREDITS_PER_ROW[i]!
+          const hoursTotal = credits * 30 // §3.1: кредиты × 30 = всего часов
+          const hoursClassroom = 72 // 2 пары в неделю × 18 недель
+          const created = createCurriculumRow(
+            db,
+            curriculumId,
+            {
+              disciplineId: disciplineIdByName.get(name)!,
+              course,
+              semesterNo,
+              credits,
+              hoursTotal,
+              hoursClassroom,
+              hoursTheory: isPractice ? 0 : hoursClassroom,
+              hoursPractice: isPractice ? hoursClassroom : 0,
+              hoursSeminar: 0,
+              hoursLab: 0,
+              hoursSrs: hoursTotal - hoursClassroom,
+              controlSemester: spec2.block === 3 ? semesterNo : null,
+            },
+            VALID_FROM,
+          )
+          rows.push({ id: created.id as number, disciplineName: name, kind: isPractice ? 'practice' : 'theory' })
+          count('строк учебного плана')
+        })
+        // Нагрузка группы берётся из плана её собственного набора: курс группы, чей набор
+        // пришёлся на этот план, — это `intakeIdx + 1`.
+        if (course === intakeIdx + 1) planRowsBySpecCourse.set(`${spec.code}-${course}`, rows)
       })
-      planRowsBySpecCourse.set(`${spec.code}-${course}`, rows)
-    })
+    }
   }
 
   // ── Группы: 39 штук, 12 бюджетных и 27 контрактных (§9.2)
@@ -527,10 +537,22 @@ function seedDemo(db: Db): { counters: Counters; templateId: number; semesterId:
     return course >= 3 ? { buildingId: hospitalId, mode: 'full_day' } : { buildingId: polyclinicId, mode: 'free' }
   }
 
+  // Дисциплина, которую поток слушает лекцией (см. ниже блок поточных лекций): её 72 часа
+  // делятся пополам — 36 читаются потоку одной строкой, 36 остаются у группы. Иначе часы
+  // потока ложились бы сверх полного плана и «Баланс нагрузки» показывал бы перебор.
+  const STREAM_LECTURE_HOURS = 36
+  const streamLectureRowIdByKey = new Map<string, number>()
+  for (const key of streamsByKey.keys()) {
+    const lectureRow = planRowsBySpecCourse.get(key)?.find((r) => r.kind === 'theory')
+    if (lectureRow) streamLectureRowIdByKey.set(key, lectureRow.id)
+  }
+
   for (const g of groups) {
-    const rows = planRowsBySpecCourse.get(`${g.code}-${g.course}`)
+    const groupKey = `${g.code}-${g.course}`
+    const rows = planRowsBySpecCourse.get(groupKey)
     if (!rows) continue
     const schemes = schemeByGroup.get(g.id)!
+    const streamLectureRowId = streamLectureRowIdByKey.get(groupKey)
 
     for (const row of rows) {
       const spec = disciplineSpecByName.get(row.disciplineName)!
@@ -548,7 +570,7 @@ function seedDemo(db: Db): { counters: Counters; templateId: number; semesterId:
             divisionSchemeId: null,
             subgroupId: null,
             lessonKind: 'theory',
-            hoursPlanned: 72,
+            hoursPlanned: row.id === streamLectureRowId ? 72 - STREAM_LECTURE_HOURS : 72,
             requiresParallel: false,
             roomTypeRequired: spec.roomType,
             clinicalModeOverride: null,
@@ -577,9 +599,10 @@ function seedDemo(db: Db): { counters: Counters; templateId: number; semesterId:
             divisionSchemeId: scheme.id,
             subgroupId,
             lessonKind: 'practice',
-            // По 36 ч на подгруппу: студент получает те же 36 ч, но у завуча в сумме по
-            // группе стоят часы каждой подгруппы отдельно (так считает activeGroupTeachingHours).
-            hoursPlanned: 36,
+            // 72 часа плана делятся между подгруппами: activeGroupTeachingHours складывает
+            // строки всех подгрупп, и фиксированные 36 ч давали при делении на три 108 ч —
+            // группа выглядела перегруженной относительно собственного учебного плана.
+            hoursPlanned: 72 / scheme.subgroupIds.length,
             requiresParallel: true,
             roomTypeRequired: spec.roomType,
             clinicalModeOverride: clinical?.mode ?? null,
@@ -619,7 +642,7 @@ function seedDemo(db: Db): { counters: Counters; templateId: number; semesterId:
         divisionSchemeId: null,
         subgroupId: null,
         lessonKind: 'theory',
-        hoursPlanned: 36,
+        hoursPlanned: STREAM_LECTURE_HOURS,
         requiresParallel: false,
         roomTypeRequired: 'lecture',
         clinicalModeOverride: null,

@@ -44,6 +44,7 @@ export function ScheduleTemplatePage() {
   const { semesters, label: semesterLabel } = useSemesterOptions()
   const [semesterId, setSemesterId] = useState<number | ''>(link.semesterId)
   const selectedSemesterId = semesterId !== '' ? semesterId : (semesters[0]?.id ?? '')
+  const selectedSemester = semesters.find((s) => s.id === selectedSemesterId)
 
   const [templates, setTemplates] = useState<ScheduleTemplate[]>([])
   const [templateId, setTemplateId] = useState<number | ''>(link.templateId)
@@ -407,6 +408,8 @@ export function ScheduleTemplatePage() {
       {showRollout && templateId !== '' && (
         <RolloutDialog
           templateId={templateId}
+          defaultDateFrom={selectedSemester?.startsOn}
+          defaultDateTo={selectedSemester?.endsOn}
           onClose={() => setShowRollout(false)}
           onApplied={() => {
             setShowRollout(false)

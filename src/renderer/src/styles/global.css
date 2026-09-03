@@ -58,12 +58,15 @@ h3 {
 
 .app-shell {
   display: flex;
-  min-height: 100vh;
+  height: 100%;
 }
 
 .app-sidebar {
   width: var(--sidebar-width);
   flex-shrink: 0;
+  /* Меню прокручивается само: раньше скроллился документ целиком, и на длинных страницах
+     (календарь года) навигация уезжала вверх вместе с содержимым. */
+  overflow-y: auto;
   background: var(--color-surface);
   border-right: 1px solid var(--color-border);
   padding: 16px 0;
@@ -687,6 +690,7 @@ table.data-table {
 }
 
 .schedule-chip {
+  overflow-wrap: anywhere;
   background: #eef2ff;
   border: 1px solid var(--color-accent);
   border-radius: 4px;
@@ -781,4 +785,71 @@ table.data-table {
   font-size: 10px;
   padding: 0;
   cursor: pointer;
+}
+
+/* Экран генерации (§5.7–5.8): прогресс, сводка по черновику, разбор штрафа. */
+
+.generation-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.generation-progress progress {
+  width: 100%;
+  height: 10px;
+}
+
+.generation-progress-phase {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.generation-hint {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.generation-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin-bottom: 16px;
+}
+
+.generation-metric-label {
+  display: block;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.generation-metric-value {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.penalty-breakdown summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-accent);
+}
+
+.penalty-breakdown ul,
+.unplaced-panel ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+.penalty-breakdown li,
+.unplaced-panel li {
+  margin-bottom: 4px;
+}
+
+.unplaced-panel h3 {
+  font-size: 13px;
+  color: var(--color-danger);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }

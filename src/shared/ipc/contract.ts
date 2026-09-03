@@ -518,6 +518,10 @@ export interface TeacherLessonRow {
   substitutionNote: string | null
   // Занятие уже передано другому преподавателю — в списке остаётся только как отметка «обработано».
   handedOver: boolean
+  // Кто ведёт занятие сейчас. У переданного по замене это уже другой преподаватель —
+  // мастер показывает, у кого именно продолжать работу с этим занятием.
+  currentTeacherId: number
+  currentTeacherName: string
 }
 
 export interface SubstituteCandidate {
@@ -585,7 +589,9 @@ export interface IpcContract {
   // Генерация расписания солвером (§3.5, §5.6-5.9): результат — черновик в памяти main,
   // применяется отдельным вызовом 'generation:apply' (не пишется в БД сразу).
   'generation:start': { in: { templateId: number; seed?: number; timeBudgetMs?: number }; out: { jobId: string } }
-  'generation:cancel': { in: { jobId: string }; out: { ok: true } }
+  // keepResult: остановить расчёт, но забрать лучшее найденное решение — оно придёт
+  // обычным 'generation:done'. Без флага результат отменённого прогона выбрасывается.
+  'generation:cancel': { in: { jobId: string; keepResult?: boolean }; out: { ok: true } }
   'generation:apply': { in: { jobId: string }; out: { operationId: number; created: number } }
 
   // Операции и аудит (§1.5, §2.10, §3.2) — ядро данных этапа 1, UI появится в этапе 2.

@@ -34,6 +34,18 @@ export const WEEKDAY_LABEL: Record<number, string> = {
   6: 'Суббота',
 }
 
+// Общепринятые сокращения: обрезание полного названия по двум буквам давало «По», «Че»,
+// «Пя», «Су» — в шапке календаря это читается как опечатка.
+export const WEEKDAY_SHORT: Record<number, string> = {
+  1: 'Пн',
+  2: 'Вт',
+  3: 'Ср',
+  4: 'Чт',
+  5: 'Пт',
+  6: 'Сб',
+  7: 'Вс',
+}
+
 export const ROOM_TYPE_LABEL = {
   lecture: 'Лекционная',
   practice: 'Практическая',

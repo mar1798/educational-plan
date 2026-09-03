@@ -52,6 +52,7 @@ export function GenerationPage() {
   const [progress, setProgress] = useState<SolverProgress | null>(null)
   const [draft, setDraft] = useState<{ input: SolverInput; output: SolverOutput } | null>(null)
   const [applying, setApplying] = useState(false)
+  const [stopping, setStopping] = useState(false)
 
   const navigate = useNavigate()
 
@@ -79,12 +80,14 @@ export function GenerationPage() {
       if (payload.jobId !== jobId) return
       setDraft({ input: payload.input, output: payload.output })
       setProgress(null)
+      setStopping(false)
     })
     const offFailed = api.on('generation:failed', (payload) => {
       if (payload.jobId !== jobId) return
       notifyError(payload.message)
       setJobId(null)
       setProgress(null)
+      setStopping(false)
     })
     return () => {
       offProgress()
@@ -120,6 +123,7 @@ export function GenerationPage() {
     if (templateId === '') return
     setDraft(null)
     setProgress(null)
+    setStopping(false)
     const res = await api.invoke('generation:start', { templateId })
     if (!res.ok) {
       notifyError(res.error.message)
@@ -133,6 +137,20 @@ export function GenerationPage() {
     await api.invoke('generation:cancel', { jobId })
     setJobId(null)
     setProgress(null)
+  }
+
+  // «Остановить и взять результат» (§5.7): локальный поиск улучшает уже готовое расписание,
+  // поэтому дожидаться полного бюджета в 60 с ради последних процентов штрафа нужно не всегда.
+  // Солвер останавливается кооперативно и присылает лучшее найденное решение — черновик
+  // приходит обычным 'generation:done', в отличие от «Отмены», которая результат выбрасывает.
+  async function handleStop() {
+    if (!jobId) return
+    setStopping(true)
+    const res = await api.invoke('generation:cancel', { jobId, keepResult: true })
+    if (!res.ok) {
+      setStopping(false)
+      notifyError(res.error.message)
+    }
   }
 
   async function handleDiscard() {
@@ -161,59 +179,90 @@ export function GenerationPage() {
   const unitsById = useMemo(() => new Map((draft?.input.units ?? []).map((u) => [u.id, u])), [draft])
 
   return (
-    <div className="page">
-      <h2>Генерация расписания</h2>
-
-      <div className="toolbar">
-        <label>
-          Семестр
-          <select value={selectedSemesterId} onChange={(e) => setSemesterId(Number(e.target.value))} disabled={generating}>
-            {semesters.map((s) => (
-              <option key={s.id} value={s.id}>
-                {semesterLabel(s.id)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Версия шаблона
-          <select value={templateId} onChange={(e) => setTemplateId(Number(e.target.value))} disabled={generating}>
-            {templates.map((t) => (
-              <option key={t.id} value={t.id}>
-                v{t.versionNo} · {t.status}
-              </option>
-            ))}
-          </select>
-        </label>
-        {!generating && draft == null && (
-          <button onClick={() => void handleStart()} disabled={templateId === ''}>
-            Сгенерировать
-          </button>
-        )}
-        {generating && (
-          <button onClick={() => void handleCancel()} className="danger">
-            Отмена
-          </button>
-        )}
+    <div>
+      <div className="page-header">
+        <h1>Генерация расписания</h1>
+        <div className="toolbar-actions">
+          <label>
+            Семестр
+            <select value={selectedSemesterId} onChange={(e) => setSemesterId(Number(e.target.value))} disabled={generating}>
+              {semesters.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {semesterLabel(s.id)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Версия шаблона
+            <select value={templateId} onChange={(e) => setTemplateId(Number(e.target.value))} disabled={generating}>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  v{t.versionNo} · {t.status}
+                </option>
+              ))}
+            </select>
+          </label>
+          {!generating && draft == null && (
+            <button type="button" className="btn btn-primary" onClick={() => void handleStart()} disabled={templateId === ''}>
+              Сгенерировать
+            </button>
+          )}
+        </div>
       </div>
 
+      {!generating && draft == null && (
+        <p className="history-empty">
+          Солвер расставит нагрузку выбранной версии шаблона по сетке 36 слотов. Расчёт занимает до минуты, результат
+          сначала показывается черновиком — в расписание он попадёт только после кнопки «Применить».
+        </p>
+      )}
+
       {generating && (
-        <div className="generation-progress">
-          <progress value={progress?.percent ?? 0} max={100} />
-          <span>
+        <div className="card generation-progress">
+          <span className="generation-progress-phase">
             {progress
               ? `${PHASE_LABEL[progress.phase]} · ${progress.percent}% · размещено ${progress.placed} из ${progress.total}`
               : 'Запуск…'}
           </span>
+          <progress value={progress?.percent ?? 0} max={100} />
+          <div className="btn-group">
+            <button type="button" className="btn" onClick={() => void handleStop()} disabled={stopping}>
+              {stopping ? 'Останавливаю…' : 'Остановить и взять результат'}
+            </button>
+            <button type="button" className="btn btn-danger" onClick={() => void handleCancel()} disabled={stopping}>
+              Отмена
+            </button>
+          </div>
+          <p className="generation-hint">
+            Полный расчёт длится около минуты. «Остановить и взять результат» прервёт улучшение и покажет лучшее из
+            найденного, «Отмена» — прекратит расчёт и ничего не сохранит.
+          </p>
         </div>
       )}
 
       {draft && (
-        <div className="generation-result">
-          <p>
-            Размещено {draft.output.assignments.length} из {draft.input.units.length}, штраф {draft.output.penalty},
-            за {draft.output.elapsedMs} мс ({draft.output.iterations} итераций)
-          </p>
+        <div className="card generation-result">
+          <div className="generation-summary">
+            <div>
+              <span className="generation-metric-label">Размещено</span>
+              <span className="generation-metric-value">
+                {draft.output.assignments.length} из {draft.input.units.length}
+              </span>
+            </div>
+            <div>
+              <span className="generation-metric-label">Штраф</span>
+              <span className="generation-metric-value">{draft.output.penalty}</span>
+            </div>
+            <div>
+              <span className="generation-metric-label">Время расчёта</span>
+              <span className="generation-metric-value">{Math.round(draft.output.elapsedMs / 1000)} с</span>
+            </div>
+            <div>
+              <span className="generation-metric-label">Итераций</span>
+              <span className="generation-metric-value">{draft.output.iterations.toLocaleString('ru-RU')}</span>
+            </div>
+          </div>
 
           {draft.output.penalty > 0 && (
             <details className="penalty-breakdown">
@@ -230,11 +279,13 @@ export function GenerationPage() {
             </details>
           )}
 
-          <div className="toolbar">
-            <button onClick={() => void handleApply()} disabled={applying}>
-              {applying ? 'Применяю…' : 'Применить'}
+          <div className="btn-group" style={{ marginTop: 16 }}>
+            <button type="button" className="btn btn-primary" onClick={() => void handleApply()} disabled={applying}>
+              {applying ? 'Применяю…' : 'Применить и открыть сетку'}
             </button>
-            <button onClick={() => void handleDiscard()}>Отклонить черновик</button>
+            <button type="button" className="btn" onClick={() => void handleDiscard()} disabled={applying}>
+              Отклонить черновик
+            </button>
           </div>
 
           {draft.output.unplaced.length > 0 && (

@@ -9,11 +9,15 @@ const ENTRY_PATH = join(__dirname, 'solver-host/entry.js')
 // убийство процесса остаётся страховкой на случай, если процесс всё же завис (жадная фаза
 // синхронна и короткая — бюджет < 3с на полном наборе, §9.1 — и тоже покрывается таймаутом).
 const KILL_TIMEOUT_MS = 1000
+// «Остановить и взять результат» ждёт дольше: процесс должен успеть досчитать текущую
+// итерацию и прислать 'done' с лучшим решением, иначе останавливать было бы незачем.
+const GRACEFUL_TIMEOUT_MS = 10_000
 
 export class SolverJob {
   private child: UtilityProcess | null
   private spawned = false
   private cancelled = false
+  private graceful = false
   private finished = false
   private pending: MainToHostMessage[] = []
 
@@ -34,7 +38,9 @@ export class SolverJob {
       this.child = null
       // Процесс завершился, не прислав результат: упал или был убит. Отмену вызывающая
       // сторона уже знает, а вот падение иначе оставит экран генерации висеть навсегда.
-      if (!this.finished && !this.cancelled) {
+      // При graceful-остановке результата ждут — молчание оставило бы экран генерации
+      // висеть на прогрессе, поэтому она сообщает об ошибке так же, как падение.
+      if (!this.finished && (!this.cancelled || this.graceful)) {
         this.finished = true
         this.onMessage({ type: 'error', message: 'Процесс генерации завершился неожиданно — попробуйте запустить ещё раз' })
       }
@@ -48,10 +54,11 @@ export class SolverJob {
     this.send({ type: 'start', input })
   }
 
-  cancel() {
+  cancel(options: { graceful?: boolean } = {}) {
     this.cancelled = true
+    this.graceful = options.graceful === true
     this.send({ type: 'cancel' })
-    setTimeout(() => this.terminate(), KILL_TIMEOUT_MS)
+    setTimeout(() => this.terminate(), this.graceful ? GRACEFUL_TIMEOUT_MS : KILL_TIMEOUT_MS)
   }
 
   private terminate() {

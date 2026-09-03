@@ -1,7 +1,18 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { useEffect, useRef } from 'react'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { navSections } from './nav'
 
 export function AppShell() {
+  const location = useLocation()
+  const content = useRef<HTMLElement>(null)
+
+  // Прокрутка сбрасывается при переходе в другой раздел: иначе после длинного календаря
+  // короткая страница («Сетка звонков», «Генерация») открывалась прокрученной ниже
+  // заголовка и выглядела пустой.
+  useEffect(() => {
+    content.current?.scrollTo(0, 0)
+  }, [location.pathname])
+
   return (
     <div className="app-shell">
       <aside className="app-sidebar">
@@ -17,7 +28,7 @@ export function AppShell() {
           </div>
         ))}
       </aside>
-      <main className="app-content">
+      <main className="app-content" ref={content}>
         <Outlet />
       </main>
     </div>
