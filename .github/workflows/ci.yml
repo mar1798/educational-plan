@@ -54,6 +54,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Собрать мало — модуль должен ещё и грузиться под win32-ABI Electron. Полный прогон
+      # тестов делает именно это (все они открывают БД), а заодно проверяет путь с
+      # кириллицей и пробелами на настоящей Windows-ФС (риск R2, tests/db/paths.test.ts).
+      - run: npm test
       - run: npm run build:win
       - uses: actions/upload-artifact@v4
         with:

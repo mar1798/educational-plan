@@ -20,7 +20,11 @@ describe('localSearch (solve = жадная фаза + локальный пои
   })
 
   it('воспроизводимость: тот же вход и seed дают идентичный результат', async () => {
-    const input = withFastBudget(tightInput())
+    // Бюджет времени здесь заведомо недостижим, а лимит итераций мал: остановка обязана
+    // произойти по детерминированной причине (max_iterations / no_improvement), иначе два
+    // прогона обрываются часами в разных точках и тест падает от загрузки машины, а не от
+    // недетерминированности солвера (см. `stoppedBy` в src/solver/localSearch.ts).
+    const input = { ...tightInput(), limits: { ...tightInput().limits, timeBudgetMs: 60_000, maxIterations: 2000 } }
     const a = await solve({ ...input, limits: { ...input.limits, seed: 42 } })
     const b = await solve({ ...input, limits: { ...input.limits, seed: 42 } })
     expect(a.assignments).toEqual(b.assignments)

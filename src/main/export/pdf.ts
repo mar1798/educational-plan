@@ -3,7 +3,7 @@
  * отрисованная `webContents.printToPDF` в скрытом окне — расписание (A4 альбомная) и
  * табличные отчёты этапа 7 (A4 книжная), общий движок печати — `printHtmlToPdf`.
  */
-import { mkdtemp, unlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { eq } from 'drizzle-orm'
@@ -40,7 +40,9 @@ async function printHtmlToPdf(html: string, filePath: string, landscape: boolean
     await writeFile(filePath, pdf)
   } finally {
     win.destroy()
-    await unlink(htmlPath).catch(() => {})
+    // Удаляем всю временную папку, а не только файл: иначе в %TEMP% копятся пустые
+    // каталоги `eduplan-print-*` — по одному на каждую печать.
+    await rm(dir, { recursive: true, force: true }).catch(() => {})
   }
 }
 
