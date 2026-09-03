@@ -6,6 +6,7 @@
 import ExcelJS from 'exceljs'
 import { eq } from 'drizzle-orm'
 import { templateEntriesView, type TemplateEntryView } from '../db/repo/schedule-template'
+import { deductedHoursReport, roomUtilizationReport, teacherLoadReport } from '../db/repo/reports'
 import { pairGrid } from '../db/schema/org'
 import { studyGroup } from '../db/schema/people'
 import type { DbLike } from '../db/repo/types'
@@ -116,5 +117,91 @@ export async function exportSummaryScheduleExcel(tx: DbLike, templateId: number,
     const groupEntries = entries.filter((e) => e.attendees.some((a) => a.groupId === groupId))
     buildGridSheet(workbook, group?.name ?? `#${groupId}`, groupEntries, pairNumbers)
   }
+  await workbook.xlsx.writeFile(filePath)
+}
+
+/** Простая табличная страница (заголовок + строки) — общий вид для трёх отчётов этапа 7. */
+interface TableColumn<T> {
+  label: string
+  width: number
+  value: (row: T) => string | number
+}
+
+function buildTableSheet<T>(workbook: ExcelJS.Workbook, title: string, columns: TableColumn<T>[], rows: T[]): void {
+  const sheet = workbook.addWorksheet(sheetName(workbook, title))
+  sheet.mergeCells(1, 1, 1, columns.length)
+  sheet.getCell(1, 1).value = title
+  sheet.getCell(1, 1).font = { bold: true, size: 14 }
+
+  columns.forEach((c, i) => {
+    sheet.getCell(2, i + 1).value = c.label
+    sheet.getColumn(i + 1).width = c.width
+  })
+  sheet.getRow(2).font = { bold: true }
+
+  rows.forEach((row, rowIdx) => {
+    columns.forEach((c, colIdx) => {
+      sheet.getCell(rowIdx + 3, colIdx + 1).value = c.value(row)
+    })
+  })
+}
+
+const PERCENT = (n: number): string => `${Math.round(n * 100)}%`
+
+/** Отчёт «Выполнение нагрузки» (§этап 7, §1.1 п.22/25/36/39). */
+export async function exportTeacherLoadReportExcel(tx: DbLike, academicYearId: number, filePath: string): Promise<void> {
+  const rows = teacherLoadReport(tx, academicYearId)
+  const workbook = new ExcelJS.Workbook()
+  buildTableSheet(
+    workbook,
+    'Выполнение нагрузки',
+    [
+      { label: 'Преподаватель', width: 30, value: (r) => r.teacherName },
+      { label: 'Категория', width: 18, value: (r) => r.categoryTitle },
+      { label: 'План, ч', width: 12, value: (r) => r.planHours },
+      { label: 'Факт, ч', width: 12, value: (r) => r.factHours },
+      { label: 'Прочие часы, ч', width: 14, value: (r) => r.otherHours },
+      { label: 'Итого, ч', width: 12, value: (r) => r.totalHours },
+      { label: 'Норма, ч', width: 12, value: (r) => r.normHoursYear ?? '—' },
+      { label: 'Недоработка, ч', width: 14, value: (r) => r.shortfallHours ?? '—' },
+    ],
+    rows,
+  )
+  await workbook.xlsx.writeFile(filePath)
+}
+
+/** Отчёт «Вычтенные часы» по дисциплине и группе (§этап 7). */
+export async function exportDeductedHoursReportExcel(tx: DbLike, dateFrom: string, dateTo: string, filePath: string): Promise<void> {
+  const rows = deductedHoursReport(tx, dateFrom, dateTo)
+  const workbook = new ExcelJS.Workbook()
+  buildTableSheet(
+    workbook,
+    `Вычтенные часы ${dateFrom} — ${dateTo}`,
+    [
+      { label: 'Дисциплина', width: 32, value: (r) => r.disciplineName },
+      { label: 'Группа', width: 16, value: (r) => r.groupName },
+      { label: 'Отменено занятий', width: 18, value: (r) => r.cancelledCount },
+      { label: 'Вычтено часов', width: 16, value: (r) => r.cancelledHours },
+    ],
+    rows,
+  )
+  await workbook.xlsx.writeFile(filePath)
+}
+
+/** Отчёт «Загрузка кабинетов» (§этап 7). */
+export async function exportRoomUtilizationReportExcel(tx: DbLike, dateFrom: string, dateTo: string, filePath: string): Promise<void> {
+  const rows = roomUtilizationReport(tx, dateFrom, dateTo)
+  const workbook = new ExcelJS.Workbook()
+  buildTableSheet(
+    workbook,
+    `Загрузка кабинетов ${dateFrom} — ${dateTo}`,
+    [
+      { label: 'Кабинет', width: 16, value: (r) => r.roomLabel },
+      { label: 'Занято пар', width: 14, value: (r) => r.occupiedSlots },
+      { label: 'Доступно пар', width: 14, value: (r) => r.availableSlots },
+      { label: 'Простой', width: 12, value: (r) => PERCENT(r.idlePercent) },
+    ],
+    rows,
+  )
   await workbook.xlsx.writeFile(filePath)
 }

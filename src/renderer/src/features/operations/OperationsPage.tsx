@@ -12,6 +12,7 @@ const KIND_LABEL: Record<OperationSummary['kind'], string> = {
   import: 'Импорт',
   bulk_edit: 'Массовая правка',
   restore: 'Восстановление',
+  substitution: 'Замена',
 }
 
 const STATUS_LABEL: Record<OperationSummary['status'], string> = {

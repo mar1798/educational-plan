@@ -16,11 +16,16 @@ import { LoadBalancePage } from '../features/load/LoadBalancePage'
 import { LoadEditorPage } from '../features/load/LoadEditorPage'
 import { StreamsPage } from '../features/load/StreamsPage'
 import { OperationsPage } from '../features/operations/OperationsPage'
+import { ReportDeductedHoursPage } from '../features/reports/ReportDeductedHoursPage'
+import { ReportRoomUtilizationPage } from '../features/reports/ReportRoomUtilizationPage'
+import { ReportSummarySchedulePage } from '../features/reports/ReportSummarySchedulePage'
+import { ReportTeacherLoadPage } from '../features/reports/ReportTeacherLoadPage'
 import { PairGridPage } from '../features/settings/PairGridPage'
 import { RoomsPage } from '../features/rooms/RoomsPage'
 import { ConflictsPage } from '../features/schedule/ConflictsPage'
 import { ScheduleTemplatePage } from '../features/schedule/ScheduleTemplatePage'
 import { SpecialitiesPage } from '../features/specialities/SpecialitiesPage'
+import { SubstitutionWizardPage } from '../features/substitutions/SubstitutionWizardPage'
 import { SystemPage } from '../features/system/SystemPage'
 import { TeachersPage } from '../features/teachers/TeachersPage'
 import { AppShell } from './AppShell'
@@ -52,6 +57,11 @@ export const router = createHashRouter([
       { path: 'import', element: <ImportWizardPage /> },
       { path: 'schedule-template', element: <ScheduleTemplatePage /> },
       { path: 'schedule-conflicts', element: <ConflictsPage /> },
+      { path: 'substitutions', element: <SubstitutionWizardPage /> },
+      { path: 'reports/teacher-load', element: <ReportTeacherLoadPage /> },
+      { path: 'reports/deducted-hours', element: <ReportDeductedHoursPage /> },
+      { path: 'reports/room-utilization', element: <ReportRoomUtilizationPage /> },
+      { path: 'reports/summary-schedule', element: <ReportSummarySchedulePage /> },
       { path: 'generation', element: <GenerationPage /> },
       { path: 'constraint-weights', element: <ConstraintWeightsPage /> },
       { path: 'system', element: <SystemPage /> },

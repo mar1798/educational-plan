@@ -50,12 +50,12 @@ function attendeeLabel(a: Pick<ResolvedAttendee, 'groupName' | 'subgroupNo'>): s
 }
 
 /** «32 ЛД («Анатомия»)» — чем занят слот у конфликтующей записи (§4.4, задача 4.4). */
-function entryLabelOf(disciplineName: string, attendees: Pick<ResolvedAttendee, 'groupName' | 'subgroupNo'>[]): string {
+export function entryLabelOf(disciplineName: string, attendees: Pick<ResolvedAttendee, 'groupName' | 'subgroupNo'>[]): string {
   const who = attendees.map(attendeeLabel).join(', ')
   return who ? `${who} («${disciplineName}»)` : `«${disciplineName}»`
 }
 
-function nameResolver(tx: DbLike, entryLabels: Map<number, string>): ConflictNameResolver {
+export function nameResolver(tx: DbLike, entryLabels: Map<number, string>): ConflictNameResolver {
   return {
     entryLabel(id: number) {
       return entryLabels.get(id) ?? `занятие #${id}`
@@ -76,7 +76,7 @@ function nameResolver(tx: DbLike, entryLabels: Map<number, string>): ConflictNam
   }
 }
 
-function studyGroupById(tx: DbLike, id: number) {
+export function studyGroupById(tx: DbLike, id: number) {
   return tx.select().from(studyGroup).where(eq(studyGroup.id, id)).get()
 }
 
@@ -722,7 +722,7 @@ export interface LessonConflictView {
 }
 
 /** Подпись материализованного занятия для текста конфликта — тот же формат, что и у записи шаблона. */
-function lessonLabel(tx: DbLike, l: { id: number; disciplineId: number }): string {
+export function lessonLabel(tx: DbLike, l: { id: number; disciplineId: number }): string {
   const disc = tx.select().from(discipline).where(eq(discipline.id, l.disciplineId)).get()
   const attendees = tx
     .select()

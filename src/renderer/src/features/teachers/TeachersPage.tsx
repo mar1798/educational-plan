@@ -14,6 +14,7 @@ import { ruCommon } from '../../ui/locale'
 import { ReferenceCrudPage, type ReferenceCrudAction } from '../../ui/ReferenceCrudPage'
 import { TeacherAbsencesPanel } from './TeacherAbsencesPanel'
 import { TeacherQualificationsPanel } from './TeacherQualificationsPanel'
+import { TeacherSubstitutionHistoryPanel } from './TeacherSubstitutionHistoryPanel'
 
 type TeacherFormValues = z.infer<typeof teacherSaveInput>
 
@@ -152,6 +153,7 @@ export function TeachersPage() {
         <>
           <TeacherQualificationsPanel teacherId={row.id} />
           <TeacherAbsencesPanel teacherId={row.id} />
+          <TeacherSubstitutionHistoryPanel teacherId={row.id} />
         </>
       )}
     />

@@ -14,7 +14,7 @@ export const generationStartInput = z.object({
 export const generationCancelInput = z.object({ jobId: z.string() })
 export const generationApplyInput = z.object({ jobId: z.string() })
 
-const operationKind = z.enum(['generate', 'rollout', 'import', 'bulk_edit', 'restore'])
+const operationKind = z.enum(['generate', 'rollout', 'import', 'bulk_edit', 'restore', 'substitution'])
 
 export const operationsListInput = z.object({ kind: operationKind.optional() })
 export const operationsUndoInput = z.object({ operationId: z.number().int().positive() })
@@ -633,5 +633,57 @@ export const exportExcelInput = z.object({
 
 export const exportPdfInput = z.object({
   templateId: z.number().int().positive(),
-  groupId: z.number().int().positive(),
+  groupId: z.number().int().positive().optional(),
 })
+
+// Мастер замены (§этап 7).
+export const substitutionsTeacherLessonsInput = z
+  .object({
+    teacherId: z.number().int().positive(),
+    dateFrom: z.string().min(1, 'Укажите дату начала'),
+    dateTo: z.string().min(1, 'Укажите дату окончания'),
+  })
+  .superRefine(requireOrderedDateFromTo)
+
+export const substitutionsCandidatesInput = z.object({ lessonId: z.number().int().positive() })
+
+export const substitutionsSwapInput = z.object({
+  lessonId: z.number().int().positive(),
+  substituteTeacherId: z.number().int().positive(),
+  reason: z.string().nullable(),
+})
+
+export const substitutionsCancelInput = z.object({
+  lessonId: z.number().int().positive(),
+  reason: z.string().nullable(),
+})
+
+export const substitutionsMoveInput = z.object({
+  lessonId: z.number().int().positive(),
+  newDate: z.string().min(1, 'Укажите новую дату'),
+  newPairNo: z.number().int().min(1).max(6),
+  newRoomId: z.number().int().positive().nullable(),
+  reason: z.string().nullable(),
+})
+
+export const substitutionsTeacherHistoryInput = z.object({ teacherId: z.number().int().positive() })
+
+// Отчёты (§этап 7).
+export const reportsTeacherLoadInput = z.object({ academicYearId: z.number().int().positive() })
+
+export const reportsDeductedHoursInput = z
+  .object({ dateFrom: z.string().min(1, 'Укажите дату начала'), dateTo: z.string().min(1, 'Укажите дату окончания') })
+  .superRefine(requireOrderedDateFromTo)
+
+export const reportsRoomUtilizationInput = z
+  .object({ dateFrom: z.string().min(1, 'Укажите дату начала'), dateTo: z.string().min(1, 'Укажите дату окончания') })
+  .superRefine(requireOrderedDateFromTo)
+
+const reportExportParams = z.union([
+  z.object({ report: z.literal('teacherLoad'), academicYearId: z.number().int().positive() }),
+  z.object({ report: z.literal('deductedHours'), dateFrom: z.string().min(1), dateTo: z.string().min(1) }).superRefine(requireOrderedDateFromTo),
+  z.object({ report: z.literal('roomUtilization'), dateFrom: z.string().min(1), dateTo: z.string().min(1) }).superRefine(requireOrderedDateFromTo),
+])
+
+export const reportsExportExcelInput = reportExportParams
+export const reportsExportPdfInput = reportExportParams

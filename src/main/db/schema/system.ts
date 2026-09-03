@@ -30,7 +30,7 @@ export const constraintWeight = sqliteTable('constraint_weight', {
 
 export const operation = sqliteTable('operation', {
   id: id(),
-  kind: text('kind').notNull().$type<'generate' | 'rollout' | 'import' | 'bulk_edit' | 'restore'>(),
+  kind: text('kind').notNull().$type<'generate' | 'rollout' | 'import' | 'bulk_edit' | 'restore' | 'substitution'>(),
   paramsJson: text('params_json'),
   summaryJson: text('summary_json'),
   status: text('status').notNull().default('preview').$type<'preview' | 'applied' | 'undone'>(),

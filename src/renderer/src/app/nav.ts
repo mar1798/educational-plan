@@ -44,6 +44,16 @@ export const navSections: NavSection[] = [
       { label: 'Веса критериев', path: '/constraint-weights' },
       { label: 'Шаблон недели', path: '/schedule-template' },
       { label: 'Конфликты', path: '/schedule-conflicts' },
+      { label: 'Замены', path: '/substitutions' },
+    ],
+  },
+  {
+    title: 'Отчёты',
+    items: [
+      { label: 'Нагрузка (план/факт)', path: '/reports/teacher-load' },
+      { label: 'Вычтенные часы', path: '/reports/deducted-hours' },
+      { label: 'Загрузка кабинетов', path: '/reports/room-utilization' },
+      { label: 'Сводное расписание', path: '/reports/summary-schedule' },
     ],
   },
   {

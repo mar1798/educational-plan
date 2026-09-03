@@ -146,6 +146,17 @@ export function saveTeachingLoad(
   return { row: saved, teacherHoursOverYear }
 }
 
+/**
+ * Годовая норма преподавателя (§1.1 п.39): 720 ч **на ставку**, и только у штатных —
+ * у внештатных и почасовиков `norm_hours_year` категории пуста, норма отсутствует, и
+ * отчёт показывает им факт без недоработки. `teacher.max_hours_year` здесь намеренно
+ * не участвует: это потолок «больше не давать», а не норма «столько надо выработать».
+ */
+export function normHoursYearOf(category: { normHoursYear: number | null } | undefined, rate: number): number | null {
+  if (category?.normHoursYear == null) return null
+  return Math.round(category.normHoursYear * rate)
+}
+
 /** Все часы преподавателя за все семестры: строки нагрузки (поток — одна строка) + прочие часы (§1.1 п.36, п.39). */
 export function totalTeacherHours(tx: DbLike, teacherId: number): number {
   const load = tx

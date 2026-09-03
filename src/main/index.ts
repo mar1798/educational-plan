@@ -24,11 +24,13 @@ import { registerGroupsHandlers } from './ipc/groups'
 import { registerImportHandlers } from './ipc/import'
 import { registerOperationsHandlers } from './ipc/operations'
 import { registerPairGridHandlers } from './ipc/pair-grid'
+import { registerReportsHandlers } from './ipc/reports'
 import { registerSemestersHandlers } from './ipc/semesters'
 import { registerRoomsHandlers } from './ipc/rooms'
 import { registerScheduleTemplateHandlers } from './ipc/schedule-template'
 import { registerSettingsHandlers } from './ipc/settings'
 import { registerSpecialitiesHandlers } from './ipc/specialities'
+import { registerSubstitutionsHandlers } from './ipc/substitutions'
 import { registerTeacherAbsencesHandlers } from './ipc/teacher-absences'
 import { registerTeacherCategoriesHandlers } from './ipc/teacher-categories'
 import { registerTeacherQualificationsHandlers } from './ipc/teacher-qualifications'
@@ -95,6 +97,8 @@ async function bootstrap() {
   registerGenerationHandlers(db, () => mainWindow)
   registerExportHandlers(db, () => mainWindow)
   registerImportHandlers({ db, getWindow: () => mainWindow })
+  registerSubstitutionsHandlers(db)
+  registerReportsHandlers(db)
 
   mainWindow = createMainWindow()
   mainWindow.on('closed', () => {

@@ -3,7 +3,7 @@ import type { SolverInput, SolverOutput } from '../../solver/model'
 
 export interface OperationSummary {
   id: number
-  kind: 'generate' | 'rollout' | 'import' | 'bulk_edit' | 'restore'
+  kind: 'generate' | 'rollout' | 'import' | 'bulk_edit' | 'restore' | 'substitution'
   status: 'preview' | 'applied' | 'undone'
   paramsJson: string | null
   summaryJson: string | null
@@ -501,6 +501,83 @@ export interface ImportApplyResult {
   skipped: { row: Record<string, Cell>; reason: string }[]
 }
 
+// Замены (§этап 7, §1.1 п.22, п.29): мастер работает над материализованными `lesson`,
+// не над `template_entry` — это первый экран, показывающий занятия по конкретным датам.
+export interface TeacherLessonRow {
+  lessonId: number
+  date: string
+  pairNo: number
+  disciplineName: string
+  targetLabel: string
+  roomLabel: string | null
+  status: 'planned' | 'held' | 'cancelled' | 'moved'
+  academicHours: number
+  hasSubstitution: boolean
+  // Что уже сделано с занятием: «Заменяет Петров П.», «Занятие отменено (Больничный)» —
+  // история замен на карточке занятия (§этап 7, п.29).
+  substitutionNote: string | null
+  // Занятие уже передано другому преподавателю — в списке остаётся только как отметка «обработано».
+  handedOver: boolean
+}
+
+export interface SubstituteCandidate {
+  teacherId: number
+  teacherName: string
+  categoryTitle: string
+  isFree: boolean
+  assignedHoursYear: number
+  normHoursYear: number | null
+  shortfallHours: number | null
+}
+
+export interface SubstitutionApplyResult {
+  operationId: number
+}
+
+export interface SubstitutionHistoryRow {
+  id: number
+  lessonId: number
+  date: string
+  pairNo: number
+  disciplineName: string
+  kind: 'teacher_swap' | 'room_swap' | 'cancel' | 'move'
+  role: 'original' | 'substitute'
+  otherTeacherName: string | null
+  reason: string | null
+  createdAt: string
+}
+
+// Отчёты (§этап 7): «сводное расписание» отдельного типа не заводит — переиспользует
+// уже существующие export:excel{kind:'summary'}/export:pdf{kind:'summary'}.
+export interface TeacherLoadReportRow {
+  teacherId: number
+  teacherName: string
+  categoryTitle: string
+  planHours: number
+  factHours: number
+  otherHours: number
+  totalHours: number
+  normHoursYear: number | null
+  shortfallHours: number | null
+}
+
+export interface DeductedHoursRow {
+  disciplineId: number
+  disciplineName: string
+  groupId: number
+  groupName: string
+  cancelledHours: number
+  cancelledCount: number
+}
+
+export interface RoomUtilizationRow {
+  roomId: number
+  roomLabel: string
+  occupiedSlots: number
+  availableSlots: number
+  idlePercent: number
+}
+
 export interface IpcContract {
   'settings:get': { in: { key: string }; out: { value: string | null } }
   'settings:set': { in: { key: string; value: string }; out: { ok: true } }
@@ -696,7 +773,38 @@ export interface IpcContract {
 
   // Экспорт расписания (§5.10-5.11): пользователь сам выбирает файл через showSaveDialog.
   'export:excel': { in: { templateId: number; kind: 'group' | 'teacher' | 'summary'; targetId?: number }; out: { path: string } | { cancelled: true } }
-  'export:pdf': { in: { templateId: number; groupId: number }; out: { path: string } | { cancelled: true } }
+  // groupId отсутствует → печать сводного расписания (по листу/странице на группу, §этап 7).
+  'export:pdf': { in: { templateId: number; groupId?: number }; out: { path: string } | { cancelled: true } }
+
+  // Мастер замены (§этап 7, §1.1 п.22, п.29): подбор преподавателя, отмена, перенос —
+  // все три действия материализованы в отдельную операцию kind='substitution' (§1.5).
+  'substitutions:teacherLessons': { in: { teacherId: number; dateFrom: string; dateTo: string }; out: TeacherLessonRow[] }
+  'substitutions:candidates': { in: { lessonId: number }; out: SubstituteCandidate[] }
+  'substitutions:swap': { in: { lessonId: number; substituteTeacherId: number; reason: string | null }; out: SubstitutionApplyResult }
+  'substitutions:cancel': { in: { lessonId: number; reason: string | null }; out: SubstitutionApplyResult }
+  'substitutions:move': {
+    in: { lessonId: number; newDate: string; newPairNo: number; newRoomId: number | null; reason: string | null }
+    out: SubstitutionApplyResult
+  }
+  'substitutions:teacherHistory': { in: { teacherId: number }; out: SubstitutionHistoryRow[] }
+
+  // Отчёты (§этап 7): нагрузка — за учебный год целиком (норма годовая, §1.1 п.39),
+  // вычтенные часы и загрузка кабинетов — на произвольный диапазон дат.
+  'reports:teacherLoad': { in: { academicYearId: number }; out: TeacherLoadReportRow[] }
+  'reports:deductedHours': { in: { dateFrom: string; dateTo: string }; out: DeductedHoursRow[] }
+  'reports:roomUtilization': { in: { dateFrom: string; dateTo: string }; out: RoomUtilizationRow[] }
+  'reports:exportExcel': {
+    in:
+      | { report: 'teacherLoad'; academicYearId: number }
+      | { report: 'deductedHours' | 'roomUtilization'; dateFrom: string; dateTo: string }
+    out: { path: string } | { cancelled: true }
+  }
+  'reports:exportPdf': {
+    in:
+      | { report: 'teacherLoad'; academicYearId: number }
+      | { report: 'deductedHours' | 'roomUtilization'; dateFrom: string; dateTo: string }
+    out: { path: string } | { cancelled: true }
+  }
 }
 
 export interface SpecialitySaveInput {

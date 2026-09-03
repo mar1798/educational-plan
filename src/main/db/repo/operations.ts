@@ -6,7 +6,7 @@ import { nowIso } from './audit'
 import type { DbLike } from './types'
 import type { Db } from '../client'
 
-export type OperationKind = 'generate' | 'rollout' | 'import' | 'bulk_edit' | 'restore'
+export type OperationKind = 'generate' | 'rollout' | 'import' | 'bulk_edit' | 'restore' | 'substitution'
 
 export class OperationNotUndoableError extends Error {
   constructor(operationId: number, status: string) {
