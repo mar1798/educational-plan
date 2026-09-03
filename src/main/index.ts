@@ -14,9 +14,10 @@ import { registerCalendarDaysHandlers } from './ipc/calendar-days'
 import { registerCalendarPeriodsHandlers } from './ipc/calendar-periods'
 import { registerCmcHandlers } from './ipc/cmc'
 import { registerCurriculumHandlers } from './ipc/curriculum'
-import { registerDemoComputeHandlers } from './ipc/demo-compute'
 import { registerDisciplinesHandlers } from './ipc/disciplines'
+import { registerExportHandlers } from './ipc/export'
 import { registerDivisionSchemesHandlers } from './ipc/division-schemes'
+import { registerGenerationHandlers } from './ipc/generation'
 import { registerGroupsHandlers } from './ipc/groups'
 import { registerImportHandlers } from './ipc/import'
 import { registerOperationsHandlers } from './ipc/operations'
@@ -65,7 +66,6 @@ async function bootstrap() {
   ensurePairGrid(db)
 
   registerSettingsHandlers(db)
-  registerDemoComputeHandlers(() => mainWindow)
   registerOperationsHandlers(db)
   registerAuditHandlers(db)
   registerBackupHandlers({ sqlite, db, dbPath: path, getWindow: () => mainWindow })
@@ -88,6 +88,8 @@ async function bootstrap() {
   registerCurriculumHandlers(db)
   registerTeachingLoadHandlers(db)
   registerScheduleTemplateHandlers(db)
+  registerGenerationHandlers(db, () => mainWindow)
+  registerExportHandlers(db, () => mainWindow)
   registerImportHandlers({ db, getWindow: () => mainWindow })
 
   mainWindow = createMainWindow()

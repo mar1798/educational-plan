@@ -6,11 +6,13 @@ export const settingsGetOutput = z.object({ value: z.string().nullable() })
 export const settingsSetInput = z.object({ key: z.string().min(1), value: z.string() })
 export const settingsSetOutput = z.object({ ok: z.literal(true) })
 
-export const demoComputeStartInput = z.object({ seed: z.number().int() })
-export const demoComputeStartOutput = z.object({ jobId: z.string() })
-
-export const demoComputeCancelInput = z.object({ jobId: z.string() })
-export const demoComputeCancelOutput = z.object({ ok: z.literal(true) })
+export const generationStartInput = z.object({
+  templateId: z.number().int().positive(),
+  seed: z.number().int().optional(),
+  timeBudgetMs: z.number().int().positive().optional(),
+})
+export const generationCancelInput = z.object({ jobId: z.string() })
+export const generationApplyInput = z.object({ jobId: z.string() })
 
 const operationKind = z.enum(['generate', 'rollout', 'import', 'bulk_edit', 'restore'])
 
@@ -610,4 +612,15 @@ export const importApplyInput = z.object({
   curriculumId: z.number().int().positive().optional(),
   semesterId: z.number().int().positive().optional(),
   validFrom: z.string().min(1, 'Укажите дату начала действия'),
+})
+
+export const exportExcelInput = z.object({
+  templateId: z.number().int().positive(),
+  kind: z.enum(['group', 'teacher', 'summary']),
+  targetId: z.number().int().positive().optional(),
+})
+
+export const exportPdfInput = z.object({
+  templateId: z.number().int().positive(),
+  groupId: z.number().int().positive(),
 })

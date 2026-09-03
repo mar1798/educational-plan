@@ -1,5 +1,9 @@
-import type { SolverInput, SolverOutput } from './model'
+import { solveGreedy } from './greedy'
+import type { SolverHooks, SolverInput, SolverOutput } from './model'
 
-export function solve(_input: SolverInput): SolverOutput {
-  return { placed: 0, penalty: 0 }
+/** Единственная точка входа солвера (§3.3, §5.1). Фаза 2 (`localSearch.ts`) добавится в этапе 6. */
+export function solve(input: SolverInput, hooks: SolverHooks = {}): SolverOutput {
+  return solveGreedy(input, hooks)
 }
+
+export * from './model'

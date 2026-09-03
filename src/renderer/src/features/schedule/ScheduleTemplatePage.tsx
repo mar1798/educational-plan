@@ -249,6 +249,28 @@ export function ScheduleTemplatePage() {
 
   const currentTemplate = templates.find((t) => t.id === templateId) ?? null
 
+  async function handleExportExcel(kind: 'group' | 'teacher' | 'summary') {
+    if (templateId === '') return
+    const targetId = kind === 'summary' ? undefined : cutTargetId === '' ? undefined : cutTargetId
+    if (kind !== 'summary' && targetId == null) {
+      notifyError(kind === 'group' ? 'Выберите группу в разрезе выше' : 'Выберите преподавателя в разрезе выше')
+      return
+    }
+    const res = await api.invoke('export:excel', { templateId, kind, targetId })
+    if (!res.ok) return notifyError(res.error.message)
+    if (!('cancelled' in res.value)) notifySuccess(`Сохранено: ${res.value.path}`)
+  }
+
+  async function handlePrintPdf() {
+    if (templateId === '' || cutKind !== 'group' || cutTargetId === '') {
+      notifyError('Выберите группу в разрезе выше, чтобы напечатать её расписание')
+      return
+    }
+    const res = await api.invoke('export:pdf', { templateId, groupId: cutTargetId })
+    if (!res.ok) return notifyError(res.error.message)
+    if (!('cancelled' in res.value)) notifySuccess(`Сохранено: ${res.value.path}`)
+  }
+
   return (
     <div>
       <div className="page-header">
@@ -321,6 +343,18 @@ export function ScheduleTemplatePage() {
                 ))}
               </select>
             )}
+            <button type="button" className="btn" onClick={() => void handleExportExcel('group')} disabled={cutKind !== 'group' || cutTargetId === ''}>
+              Excel: группа
+            </button>
+            <button type="button" className="btn" onClick={() => void handleExportExcel('teacher')} disabled={cutKind !== 'teacher' || cutTargetId === ''}>
+              Excel: преподаватель
+            </button>
+            <button type="button" className="btn" onClick={() => void handleExportExcel('summary')}>
+              Excel: сводное
+            </button>
+            <button type="button" className="btn" onClick={() => void handlePrintPdf()} disabled={cutKind !== 'group' || cutTargetId === ''}>
+              Печать PDF
+            </button>
           </div>
 
           <DndContext sensors={sensors} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>

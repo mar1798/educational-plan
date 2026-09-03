@@ -8,6 +8,7 @@ import { CmcPage } from '../features/cmc/CmcPage'
 import { CurriculaPage } from '../features/curriculum/CurriculaPage'
 import { CurriculumEditorPage } from '../features/curriculum/CurriculumEditorPage'
 import { DisciplinesPage } from '../features/disciplines/DisciplinesPage'
+import { GenerationPage } from '../features/generation/GenerationPage'
 import { GroupsPage } from '../features/groups/GroupsPage'
 import { ImportWizardPage } from '../features/import/ImportWizardPage'
 import { LoadBalancePage } from '../features/load/LoadBalancePage'
@@ -50,6 +51,7 @@ export const router = createHashRouter([
       { path: 'import', element: <ImportWizardPage /> },
       { path: 'schedule-template', element: <ScheduleTemplatePage /> },
       { path: 'schedule-conflicts', element: <ConflictsPage /> },
+      { path: 'generation', element: <GenerationPage /> },
       { path: 'system', element: <SystemPage /> },
       { path: 'operations', element: <OperationsPage /> },
       { path: 'pair-grid', element: <PairGridPage /> },

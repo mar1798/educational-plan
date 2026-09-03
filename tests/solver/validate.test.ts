@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { findConflicts, type SlotEntry } from '../../src/solver/validate'
+import { findConflicts, validateSolution, type SlotEntry } from '../../src/solver/validate'
+import { slotIndex } from '../../src/solver/model'
+import { makeGroup, makeRoom, makeSlots, makeTeacher, makeUnit, roomyInput } from '../fixtures/solver'
+import { DEFAULT_WEIGHTS } from '../../src/solver/model'
+import type { SolverInput, SolverOutput } from '../../src/solver/model'
 
 function entry(partial: Partial<SlotEntry> & Pick<SlotEntry, 'id'>): SlotEntry {
   return {
@@ -77,5 +81,78 @@ describe('findConflicts (§4.4, §4.6, §5.8)', () => {
   it('кандидат сам с собой (тот же id среди others) не конфликтует', () => {
     const candidate = entry({ id: 1, teacherId: 5 })
     expect(findConflicts(candidate, [candidate])).toEqual([])
+  })
+})
+
+describe('validateSolution — независимый валидатор решения солвера (§5.4, §9.1 уровень 2)', () => {
+  it('чистое решение из greedy не даёт нарушений (перекрёстная проверка через roomyInput)', () => {
+    const input = roomyInput(2, 2)
+    const output: SolverOutput = {
+      assignments: input.units.map((u, i) => ({ unitId: u.id, slot: i, roomIdx: 0 })),
+      unplaced: [],
+      penalty: 0,
+      breakdown: {},
+      iterations: 1,
+      elapsedMs: 1,
+      stoppedBy: 'completed',
+    }
+    // Намеренно наивное решение (все юниты в разные слоты одного кабинета вместимостью 30,
+    // студентов 25 у каждой из 2 групп) — на 2 группы и 4 юнита конфликтов по кабинету/студентам нет.
+    expect(validateSolution(input, output)).toEqual([])
+  })
+
+  it('ловит специально испорченное решение: два юнита одного преподавателя в одном слоте', () => {
+    const teacher = makeTeacher(0)
+    const group = makeGroup(0)
+    const room = makeRoom(0)
+    const unitA = makeUnit({ id: 1, teacherIdx: 0, attendees: [{ groupIdx: 0, memberMask: [0xffff, 0] }] })
+    const unitB = makeUnit({ id: 2, teacherIdx: 0, attendees: [{ groupIdx: 0, memberMask: [0xffff0000, 0] }] })
+    const input: SolverInput = {
+      units: [unitA, unitB],
+      teachers: [teacher],
+      rooms: [room],
+      buildings: [{ idx: 0, id: 1, clinicalMode: null }],
+      groups: [group],
+      slots: makeSlots(),
+      fixed: [],
+      weights: DEFAULT_WEIGHTS,
+      limits: { timeBudgetMs: 1000, maxIterations: 100, seed: 1 },
+    }
+    const slot = slotIndex(1, 1)
+    const output: SolverOutput = {
+      assignments: [
+        { unitId: 1, slot, roomIdx: 0 },
+        { unitId: 2, slot, roomIdx: 0 }, // тот же слот и тот же преподаватель — испорчено намеренно
+      ],
+      unplaced: [],
+      penalty: 0,
+      breakdown: {},
+      iterations: 1,
+      elapsedMs: 1,
+      stoppedBy: 'completed',
+    }
+    const violations = validateSolution(input, output)
+    expect(violations.some((v) => v.reason === 'teacher_busy')).toBe(true)
+  })
+
+  it('ловит потерянный юнит: отсутствует и в assignments, и в unplaced', () => {
+    const teacher = makeTeacher(0)
+    const group = makeGroup(0)
+    const room = makeRoom(0)
+    const unit = makeUnit({ id: 9, teacherIdx: 0 })
+    const input: SolverInput = {
+      units: [unit],
+      teachers: [teacher],
+      rooms: [room],
+      buildings: [{ idx: 0, id: 1, clinicalMode: null }],
+      groups: [group],
+      slots: makeSlots(),
+      fixed: [],
+      weights: DEFAULT_WEIGHTS,
+      limits: { timeBudgetMs: 1000, maxIterations: 100, seed: 1 },
+    }
+    const output: SolverOutput = { assignments: [], unplaced: [], penalty: 0, breakdown: {}, iterations: 0, elapsedMs: 0, stoppedBy: 'completed' }
+    const violations = validateSolution(input, output)
+    expect(violations).toEqual([{ unitId: 9, reason: 'lost_unit', detail: expect.any(String) }])
   })
 })

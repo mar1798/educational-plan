@@ -1,4 +1,5 @@
 import type { Cell, Grid, TargetEntity } from '../import/engine'
+import type { SolverInput, SolverOutput } from '../../solver/model'
 
 export interface OperationSummary {
   id: number
@@ -493,10 +494,11 @@ export interface IpcContract {
   'settings:get': { in: { key: string }; out: { value: string | null } }
   'settings:set': { in: { key: string; value: string }; out: { ok: true } }
 
-  // Заготовка utilityProcess (задача 0.7): проверка форк/прогресс/отмена.
-  // Будет заменена реальным 'generation:*' в этапе 5 (§3.5).
-  'demo:compute:start': { in: { seed: number }; out: { jobId: string } }
-  'demo:compute:cancel': { in: { jobId: string }; out: { ok: true } }
+  // Генерация расписания солвером (§3.5, §5.6-5.9): результат — черновик в памяти main,
+  // применяется отдельным вызовом 'generation:apply' (не пишется в БД сразу).
+  'generation:start': { in: { templateId: number; seed?: number; timeBudgetMs?: number }; out: { jobId: string } }
+  'generation:cancel': { in: { jobId: string }; out: { ok: true } }
+  'generation:apply': { in: { jobId: string }; out: { operationId: number; created: number } }
 
   // Операции и аудит (§1.5, §2.10, §3.2) — ядро данных этапа 1, UI появится в этапе 2.
   'operations:list': { in: { kind?: OperationSummary['kind'] }; out: OperationSummary[] }
@@ -673,6 +675,10 @@ export interface IpcContract {
   'import:profiles:delete': { in: { id: number }; out: { ok: true } }
   // Операция вида 'import' (§1.5) — откатывается одной кнопкой на экране «Операции» (3.9).
   'import:apply': { in: ImportApplyInput; out: ImportApplyResult }
+
+  // Экспорт расписания (§5.10-5.11): пользователь сам выбирает файл через showSaveDialog.
+  'export:excel': { in: { templateId: number; kind: 'group' | 'teacher' | 'summary'; targetId?: number }; out: { path: string } | { cancelled: true } }
+  'export:pdf': { in: { templateId: number; groupId: number }; out: { path: string } | { cancelled: true } }
 }
 
 export interface SpecialitySaveInput {
@@ -948,6 +954,11 @@ export interface ImportApplyInput {
 export type IpcChannel = keyof IpcContract
 
 export interface IpcEvents {
-  'demo:compute:progress': { jobId: string; percent: number; iteration: number }
-  'demo:compute:done': { jobId: string; placed: number; penalty: number }
+  'generation:progress': { jobId: string; percent: number; iteration: number; placed: number; total: number; phase: 'greedy' | 'search' }
+  // `input` едет вместе с `output`, чтобы экран «Не удалось разместить» (§5.7-5.8) мог
+  // сопоставить unitId с преподавателем/дисциплиной/группой без отдельного IPC-похода.
+  'generation:done': { jobId: string; input: SolverInput; output: SolverOutput }
+  // Процесс солвера упал или завершился, не прислав результат (§5.6) — экран генерации
+  // обязан выйти из состояния «идёт расчёт», иначе кнопка «Сгенерировать» не вернётся.
+  'generation:failed': { jobId: string; message: string }
 }

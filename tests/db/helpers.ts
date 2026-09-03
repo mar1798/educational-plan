@@ -166,3 +166,71 @@ export function seedMinimalWorld(db: Db): MinimalWorld {
     operationId,
   }
 }
+
+/**
+ * Демо-колледж масштаба настоящего (§9.2 `full-college`): 39 групп, 140 преподавателей,
+ * 55 кабинетов и по 10 недельных строк нагрузки на группу. Нужен там, где важен не смысл
+ * данных, а объём — например, приёмка §5.5 «снимок собирается за < 1 с».
+ */
+export function seedCollegeWorld(db: Db, world: MinimalWorld): { loadIds: number[] } {
+  const teacherIds: number[] = []
+  for (let i = 0; i < 140; i++) {
+    teacherIds.push(
+      db
+        .insert(schema.teacher)
+        .values({ lastName: `Преподаватель${i}`, firstName: 'И', categoryId: world.teacherCategoryId, maxPairsPerDay: 6 })
+        .returning({ id: schema.teacher.id })
+        .get().id,
+    )
+  }
+
+  const roomTypes = ['practice', 'lecture', 'lab', 'seminar', 'computer'] as const
+  for (let i = 0; i < 55; i++) {
+    db.insert(schema.room)
+      .values({ buildingId: world.buildingId, number: `к${i}`, roomType: roomTypes[i % roomTypes.length]!, capacity: 30, validFrom: '2026-01-01' })
+      .run()
+  }
+
+  const groupIds: number[] = []
+  for (let i = 0; i < 39; i++) {
+    groupIds.push(
+      db
+        .insert(schema.studyGroup)
+        .values({
+          name: `${10 + i} СД`,
+          specialityId: world.specialityId,
+          admissionYear: 2026,
+          course: (i % 4) + 1,
+          studentsCount: 20 + (i % 15),
+          funding: i < 12 ? 'budget' : 'contract',
+          validFrom: '2026-01-01',
+        })
+        .returning({ id: schema.studyGroup.id })
+        .get().id,
+    )
+  }
+
+  const loadIds: number[] = []
+  let teacherCursor = 0
+  for (const groupId of groupIds) {
+    for (let u = 0; u < 10; u++) {
+      loadIds.push(
+        db
+          .insert(schema.teachingLoad)
+          .values({
+            semesterId: world.semesterId,
+            curriculumRowId: world.curriculumRowId,
+            teacherId: teacherIds[teacherCursor++ % teacherIds.length]!,
+            groupId,
+            lessonKind: 'theory',
+            hoursPlanned: 36,
+            validFrom: '2026-01-01',
+          })
+          .returning({ id: schema.teachingLoad.id })
+          .get().id,
+      )
+    }
+  }
+
+  return { loadIds }
+}

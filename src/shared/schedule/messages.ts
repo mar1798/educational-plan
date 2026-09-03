@@ -1,3 +1,4 @@
+import type { BlockReason, Unit, UnplacedReason, UnplacedUnit } from '../../solver/model'
 import type { ConflictReason } from '../../solver/validate'
 
 /**
@@ -26,4 +27,46 @@ export function describeConflict(reason: ConflictReason, names: ConflictNameReso
 
 export function describeConflicts(reasons: ConflictReason[], names: ConflictNameResolver): string {
   return reasons.map((r) => describeConflict(r, names)).join('; ')
+}
+
+/**
+ * Человеческая причина отказа солвера (§5.7 PLAN.md): экран «Не удалось разместить»
+ * показывает конкретный дефицит ресурса, а не «не удалось составить расписание».
+ */
+export interface UnplacedNameResolver {
+  teacherName(idx: number): string
+  disciplineName(idx: number): string
+  targetLabel(unit: Unit): string
+}
+
+const UNPLACED_REASON_LABEL: Record<UnplacedReason, string> = {
+  no_free_slot: 'не нашлось свободного слота',
+  no_suitable_room: 'не нашлось подходящего кабинета',
+  teacher_unavailable: 'преподаватель недоступен во всех проверенных слотах',
+  group_day_limit: 'упирается в лимит пар или часов в день',
+  paired_unit_failed: 'не удалось поставить парой со второй подгруппой в один слот',
+}
+
+const BLOCK_REASON_LABEL: Record<BlockReason, string> = {
+  slot_disabled: 'слот выключен',
+  teacher_unavailable: 'преподаватель недоступен',
+  teacher_busy: 'преподаватель занят',
+  student_busy: 'студенты уже заняты',
+  room_busy: 'кабинет занят',
+  room_capacity: 'не хватает вместимости кабинета',
+  room_type: 'не тот тип кабинета',
+  building_mismatch: 'кабинет не в нужном здании',
+  group_day_limit: 'лимит пар в день у группы',
+  teacher_day_limit: 'лимит пар в день у преподавателя',
+  group_week_hours: 'недельный лимит часов у группы',
+  clinical_conflict: 'день уже занят другой клинической базой',
+  no_room_candidate: 'нет ни одного подходящего кабинета',
+}
+
+export function describeUnplaced(unit: Unit, item: UnplacedUnit, names: UnplacedNameResolver): string {
+  const who = `${names.teacherName(unit.teacherIdx)} — ${names.disciplineName(unit.disciplineIdx)}, ${names.targetLabel(unit)}`
+  const reason = UNPLACED_REASON_LABEL[item.reason]
+  const uniqueBlocks = [...new Set(item.details.blockedBy)]
+  const blocked = uniqueBlocks.length > 0 ? ` (мешало: ${uniqueBlocks.map((b) => BLOCK_REASON_LABEL[b]).join(', ')})` : ''
+  return `${who}: ${reason}${blocked}`
 }
