@@ -46,7 +46,9 @@ node node_modules/electron/install.js
 - `npm test` / `npm run test:solver` — тесты
 - `npm run build:mac` — сборка `.app` без инсталлятора, для локальной проверки
 - `npm run build:win` — сборка `.exe`-инсталлятора (NSIS); конфиг в
-  `electron-builder.yml` готов, фактический прогон — этап 8 (Windows-релиз)
+  `electron-builder.yml` готов; CI-джоба `build-win` (`.github/workflows/ci.yml`)
+  прогоняет её на `windows-latest` при каждом push/PR и выкладывает `.exe`
+  артефактом — см. [docs/windows-install.md](./docs/windows-install.md)
 
 ## Статус
 
@@ -84,3 +86,21 @@ node node_modules/electron/install.js
 этап 2), реальные CRUD-хендлеры для конкретных сущностей (тоже этап 2 и далее) —
 этап 1 закладывает только универсальный слой данных, которым они будут
 пользоваться.
+
+Этап 8 (Windows-релиз) — частично сделано, дальше нужна реальная Windows-машина.
+Сделано: CI-джоба `build-win` на `windows-latest` (`.github/workflows/ci.yml`) —
+`npm ci` пересобирает `better-sqlite3` под win32/x64 ABI Electron, `build:win`
+паковает NSIS-инсталлятор, `.exe` выкладывается артефактом при каждом push/PR
+(риск R1, PLAN.md §8); аудит путей в коде — везде `app.getPath()`/`path.join`,
+явных склеек строк или unix-специфичных предположений не найдено; `nsis.perMachine:
+false` зафиксирован явно в `electron-builder.yml` (установка без прав
+администратора, в `%LOCALAPPDATA%`); инструкция по установке с описанием
+SmartScreen — [docs/windows-install.md](./docs/windows-install.md).
+
+Не сделано: два реальных скриншота SmartScreen (заглушки в
+`docs/windows-install.md` помечены `TODO`), ручная проверка на живой Windows 11 —
+путь с кириллицей и пробелами, установка/обновление поверх/удаление без
+администратора, и приёмочный прогон на реальных данных колледжа вместе с
+завучем. Это требует физического доступа к Windows-машине, поэтому не
+закрывается из текущей среды разработки (macOS) — финальный пункт «Готово,
+когда» этапа 8 (PLAN.md §10) может подтвердить только сам завуч.

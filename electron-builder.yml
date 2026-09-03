@@ -41,3 +41,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
+  # Этап 8: завуч ставит приложение без прав администратора — perMachine: false
+  # (по умолчанию у electron-builder, но фиксируем явно) кладёт установку
+  # в %LOCALAPPDATA%, где обычный пользователь Windows и так может писать.
+  perMachine: false
