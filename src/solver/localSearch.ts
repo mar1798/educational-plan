@@ -122,6 +122,16 @@ function yieldToEventLoop(): Promise<void> {
 /** Снимок решения на момент запуска локального поиска — жадная фаза (этап 5) уже это посчитала. */
 export async function runLocalSearch(input: SolverInput, greedy: SolverOutput, hooks: SolverHooks, startedAt: number): Promise<SolverOutput> {
   const unitsById = new Map(input.units.map((u) => [u.id, u]))
+  // Парные подгруппы (§4.3 requiresParallel): жадная фаза ставит их в один слот, и локальный
+  // поиск обязан этот инвариант сохранять (§9.1 уровень 3) — значит, любой ход двигает пару
+  // целиком. Как и в `greedy.ts`, парой считается только взаимная ссылка: односторонняя или
+  // битая обрабатывается как обычный одиночный юнит.
+  const partnerOf = new Map<number, Unit>()
+  for (const u of input.units) {
+    if (u.pairedUnitId == null) continue
+    const p = unitsById.get(u.pairedUnitId)
+    if (p && p.pairedUnitId === u.id) partnerOf.set(u.id, p)
+  }
   const weights = input.weights
 
   let state = Solution.forInput(input)
@@ -428,7 +438,19 @@ export async function runLocalSearch(input: SolverInput, greedy: SolverOutput, h
     }
     if (bestSlot === -1) return null
     const roomIdx = pickRoom(unit, rng, from.roomIdx)
-    return [{ unit, from, to: { slot: bestSlot, roomIdx } }]
+    const moves: PlannedMove[] = [{ unit, from, to: { slot: bestSlot, roomIdx } }]
+
+    // Партнёр по паре переезжает в тот же слот. Если он почему-то не размещён — пару не рвём
+    // и ход не делаем: восстановлением пары занимается `insert`.
+    const partner = partnerOf.get(unitId)
+    if (partner) {
+      const partnerFrom = assignments.get(partner.id)
+      if (!partnerFrom) return null
+      // Кабинет партнёру выбирается отдельно; если случайно совпал с первым, `tryApply`
+      // отвергнет ход по `room_busy` — это обычная неудачная попытка, не ошибка.
+      moves.push({ unit: partner, from: partnerFrom, to: { slot: bestSlot, roomIdx: pickRoom(partner, rng, partnerFrom.roomIdx) } })
+    }
+    return moves
   }
 
   function planSwap(rng: Rng): PlannedMove[] | null {
@@ -436,6 +458,8 @@ export async function runLocalSearch(input: SolverInput, greedy: SolverOutput, h
     const idA = placedPool.pickRandom(rng)!
     const idB = placedPool.pickRandom(rng)!
     if (idA === idB) return null
+    // Обмен слотами разорвал бы пару (партнёр остался бы на месте) — такие юниты двигает `move`.
+    if (partnerOf.has(idA) || partnerOf.has(idB)) return null
     const unitA = unitsById.get(idA)!
     const unitB = unitsById.get(idB)!
     const posA = assignments.get(idA)!
@@ -464,6 +488,10 @@ export async function runLocalSearch(input: SolverInput, greedy: SolverOutput, h
     const unitId = unplacedPool.pickRandom(rng)
     if (unitId == null) return null
     const unit = unitsById.get(unitId)!
+    const partner = partnerOf.get(unitId)
+    // Партнёр уже стоит — вставить второго в тот же слот значило бы посадить обе подгруппы
+    // на одного преподавателя/кабинет мимо пары; такую ситуацию чинит только `move`.
+    if (partner && assignments.has(partner.id)) return null
 
     const attempts = Math.min(INSERT_SAMPLE, enabledSlots.length)
     const tried = new Set<number>()
@@ -472,21 +500,34 @@ export async function runLocalSearch(input: SolverInput, greedy: SolverOutput, h
       if (tried.has(slot)) continue
       tried.add(slot)
       const roomIdx = pickRoom(unit, rng, null)
-      if (canPlace(input, state, unit, slot, roomIdx) === null) {
-        return [{ unit, from: null, to: { slot, roomIdx } }]
-      }
+      if (canPlace(input, state, unit, slot, roomIdx) !== null) continue
+      if (!partner) return [{ unit, from: null, to: { slot, roomIdx } }]
+      // Пара идёт в тот же слот; допустимость второй половины проверит `tryApply`
+      // (она видит состояние уже с поставленной первой).
+      return [
+        { unit, from: null, to: { slot, roomIdx } },
+        { unit: partner, from: null, to: { slot, roomIdx: pickRoom(partner, rng, null) } },
+      ]
     }
 
+    // Ruin & recreate: вытеснить занимающий слот юнит. Для пары освободить нужно сразу два
+    // слота-ресурса, и шанс угадать оба ничтожен — ограничиваемся одиночными юнитами.
+    if (partner) return null
     const slot = enabledSlots[rng.nextInt(enabledSlots.length)]!
     const blocker = findBlocker(unit, slot)
     if (!blocker) return null
     const blockerPos = assignments.get(blocker.id)
     if (!blockerPos) return null
     const roomIdx = pickRoom(unit, rng, null)
-    return [
-      { unit: blocker, from: blockerPos, to: null },
-      { unit, from: null, to: { slot, roomIdx } },
-    ]
+    const evictions: PlannedMove[] = [{ unit: blocker, from: blockerPos, to: null }]
+    // Вытесняем блокирующий юнит вместе с его парой — иначе пара разорвётся.
+    const blockerPartner = partnerOf.get(blocker.id)
+    if (blockerPartner) {
+      const partnerPos = assignments.get(blockerPartner.id)
+      if (!partnerPos) return null
+      evictions.push({ unit: blockerPartner, from: partnerPos, to: null })
+    }
+    return [...evictions, { unit, from: null, to: { slot, roomIdx } }]
   }
 
   function pickMoveKind(rng: Rng): 'move' | 'swap' | 'rechair' | 'insert' {

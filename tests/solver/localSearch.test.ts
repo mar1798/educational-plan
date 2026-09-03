@@ -1,27 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { solve } from '../../src/solver'
 import { solveGreedy } from '../../src/solver/greedy'
-import { Solution } from '../../src/solver/occupancy'
-import { computePenalty } from '../../src/solver/penalty'
 import { validateSolution } from '../../src/solver/validate'
-import { fixedAt, makeGroup, makeRoom, makeSlots, makeTeacher, makeUnit, roomyInput, tightInput } from '../fixtures/solver'
-import type { SolverInput, SolverOutput } from '../../src/solver/model'
+import { fixedAt, makeBuilding, makeGroup, makeRoom, makeSlots, makeTeacher, makeUnit, roomyInput, tightInput } from '../fixtures/solver'
+import type { SolverInput } from '../../src/solver/model'
 import { DEFAULT_WEIGHTS, slotIndex } from '../../src/solver/model'
-
-/** Настоящий взвешенный штраф решения (§5.5) — в отличие от `output.penalty` жадной фазы,
- * которая до локального поиска использует грубую заглушку `unplaced.length * 1000` (§6 этап 5). */
-function realPenalty(input: SolverInput, output: SolverOutput): number {
-  const unitsById = new Map(input.units.map((u) => [u.id, u]))
-  const state = Solution.forInput(input)
-  for (const f of input.fixed) state.occupy(f, f.slot, f.roomIdx, input.slots[f.slot]!.academicHours)
-  const placed = []
-  for (const a of output.assignments) {
-    const unit = unitsById.get(a.unitId)!
-    state.occupy(unit, a.slot, a.roomIdx, input.slots[a.slot]!.academicHours)
-    placed.push({ unit, slot: a.slot, roomIdx: a.roomIdx })
-  }
-  return computePenalty(input, state, placed, output.unplaced.length).total
-}
 
 function withFastBudget(input: SolverInput, timeBudgetMs = 400): SolverInput {
   return { ...input, limits: { ...input.limits, timeBudgetMs, maxIterations: 8000 } }
@@ -49,7 +32,8 @@ describe('localSearch (solve = жадная фаза + локальный пои
     const input = withFastBudget(tightInput())
     const greedyOnly = solveGreedy(input)
     const searched = await solve(input)
-    expect(searched.penalty).toBeLessThanOrEqual(realPenalty(input, greedyOnly))
+    // Обе фазы отдают штраф в одних единицах (§5.5), поэтому сравниваются напрямую.
+    expect(searched.penalty).toBeLessThanOrEqual(greedyOnly.penalty)
   })
 
   it('закреплённые (is_locked) юниты не двигаются: остаются в fixed, не в units', async () => {
@@ -74,6 +58,39 @@ describe('localSearch (solve = жадная фаза + локальный пои
 
     const output = await solve(input)
     expect(output.assignments.every((a) => a.unitId !== fixed.id)).toBe(true)
+    expect(validateSolution(input, output)).toEqual([])
+  })
+
+  it('парные подгруппы после локального поиска остаются в одном слоте', async () => {
+    const groups = [makeGroup(0, { studentsCount: 30 })]
+    const teachers = [makeTeacher(0), makeTeacher(1), makeTeacher(2)]
+    const rooms = [makeRoom(0), makeRoom(1), makeRoom(2)]
+    const first = makeUnit({ teacherIdx: 0, students: 15, attendees: [{ groupIdx: 0, memberMask: [0xffff, 0] }] })
+    const second = makeUnit({ teacherIdx: 1, students: 15, attendees: [{ groupIdx: 0, memberMask: [0xffff0000, 0] }] })
+    first.pairedUnitId = second.id
+    second.pairedUnitId = first.id
+    // Соседи по группе, чтобы поиску было что двигать и он реально гонял ходы вокруг пары.
+    const others = Array.from({ length: 6 }, () =>
+      makeUnit({ teacherIdx: 2, students: 30, attendees: [{ groupIdx: 0, memberMask: [0xffffffff, 0] }] }),
+    )
+
+    const input: SolverInput = {
+      units: [first, second, ...others],
+      teachers,
+      rooms,
+      buildings: [makeBuilding(0)],
+      groups,
+      slots: makeSlots(),
+      fixed: [],
+      weights: DEFAULT_WEIGHTS,
+      limits: { timeBudgetMs: 500, maxIterations: 50_000, seed: 3 },
+    }
+
+    const output = await solve(input)
+    // `pair_split` проверяет независимый валидатор — здесь ещё и явно, чтобы падение читалось.
+    const a = output.assignments.find((x) => x.unitId === first.id)
+    const b = output.assignments.find((x) => x.unitId === second.id)
+    expect(a?.slot).toBe(b?.slot)
     expect(validateSolution(input, output)).toEqual([])
   })
 

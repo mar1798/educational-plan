@@ -1,14 +1,16 @@
 /**
  * Начальная жадная расстановка (§5.6, фаза 1 — MVP этапа 5). Юниты берутся most-constrained
  * first, для каждого перебираются допустимые (slot, room) и выбирается вариант с минимальной
- * локальной эвристикой (окна + поздние пары — компактная замена полноценного `penalty.ts`,
- * который появится в этапе 6, см. план этапа 5, «Явные упрощения» п.2). Если ничего не
- * подошло, юнит уходит в `unplaced` с наиболее частой причиной отказа, алгоритм продолжает.
+ * локальной эвристикой (окна + поздние пары — компактная замена полного пересчёта `penalty.ts`
+ * на каждой попытке, см. план этапа 5, «Явные упрощения» п.2). Если ничего не подошло, юнит
+ * уходит в `unplaced` с наиболее частой причиной отказа, алгоритм продолжает. Итоговый штраф
+ * решения считается уже настоящей функцией §5.5 — в тех же единицах, что и после этапа 6.
  */
 import type { BlockReason, SolverHooks, SolverInput, SolverOutput, Unit, UnplacedReason, UnplacedUnit } from './model'
-import { PAIRS, slotIndex } from './model'
+import { PAIRS, slotIndex, WEIGHT_CODES } from './model'
 import { allowsNoRoom, candidateRooms, canPlace } from './hard'
 import { popcount, Solution, testBit } from './occupancy'
+import { computePenalty, type PlacedUnit } from './penalty'
 import { Rng } from './rng'
 
 const PROGRESS_INTERVAL_MS = 200
@@ -200,12 +202,20 @@ export function solveGreedy(input: SolverInput, hooks: SolverHooks = {}): Solver
 
   hooks.onProgress?.({ percent: 100, iteration: processed, placed: assignments.length, total: input.units.length, phase: 'greedy' })
 
+  // Настоящий взвешенный штраф §5.5 (этап 6), а не прежняя заглушка `unplaced.length * 1000`:
+  // `state` здесь уже содержит и `fixed`, и всё расставленное, так что пересчёт — один проход.
+  // Он нужен, даже когда следом идёт локальный поиск: при отмене на жадной фазе именно этот
+  // результат уходит в UI, и показанный там штраф с разбором должен быть настоящим.
+  const placed: PlacedUnit[] = assignments.map((a) => ({ unit: unitsById.get(a.unitId)!, slot: a.slot, roomIdx: a.roomIdx }))
+  const { total, raw } = computePenalty(input, state, placed, unplaced.length)
+  const breakdown: Record<string, number> = { unplaced: unplaced.length }
+  for (const [key, dbCode] of Object.entries(WEIGHT_CODES)) breakdown[dbCode] = raw[key as keyof typeof raw]
+
   return {
     assignments,
     unplaced,
-    // Заготовка под этап 6: полноценный penalty.ts со взвешенными критериями заменит эту оценку.
-    penalty: unplaced.length * 1000,
-    breakdown: { unplaced: unplaced.length },
+    penalty: total,
+    breakdown,
     iterations: processed,
     elapsedMs: Date.now() - startedAt,
     stoppedBy,

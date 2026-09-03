@@ -2,36 +2,19 @@
  * Бенчмарк солвера (§9.1 уровень 5, §10 PLAN.md), два прогона на `full-college`:
  * 1) жадная фаза (этап 5) одна — должна укладываться в 3 секунды и не давать жёстких нарушений;
  * 2) жадная фаза + локальный поиск (этап 6, бюджет 60 с) — штраф должен упасть минимум
- *    на 40 % относительно жадной фазы (в тех же единицах — реальный взвешенный штраф §5.5,
- *    а не грубая заглушка `unplaced.length * 1000`, которой пользуется одна жадная фаза
- *    до появления `penalty.ts`) при том же бюджете 60 с — это и есть «Готово когда» этапа 6.
+ *    на 40 % относительно жадной фазы при том же бюджете 60 с (обе фазы считают штраф одной
+ *    и той же функцией §5.5) — это и есть «Готово когда» этапа 6.
  * Запуск: `npm run bench:solver`.
  */
 import { solve } from '../../src/solver'
 import { solveGreedy } from '../../src/solver/greedy'
-import { Solution } from '../../src/solver/occupancy'
-import { computePenalty } from '../../src/solver/penalty'
 import { validateSolution } from '../../src/solver/validate'
 import { fullCollegeInput } from '../fixtures/solver'
-import type { SolverInput, SolverOutput } from '../../src/solver/model'
+import type { SolverInput } from '../../src/solver/model'
 
 const GREEDY_TIME_BUDGET_MS = 3000
 const SEARCH_TIME_BUDGET_MS = 60_000
 const MIN_IMPROVEMENT = 0.4
-
-/** Настоящий взвешенный штраф (§5.5) решения жадной фазы — для честного сравнения с этапом 6. */
-function realPenalty(input: SolverInput, output: SolverOutput): number {
-  const unitsById = new Map(input.units.map((u) => [u.id, u]))
-  const state = Solution.forInput(input)
-  for (const f of input.fixed) state.occupy(f, f.slot, f.roomIdx, input.slots[f.slot]!.academicHours)
-  const placed = []
-  for (const a of output.assignments) {
-    const unit = unitsById.get(a.unitId)!
-    state.occupy(unit, a.slot, a.roomIdx, input.slots[a.slot]!.academicHours)
-    placed.push({ unit, slot: a.slot, roomIdx: a.roomIdx })
-  }
-  return computePenalty(input, state, placed, output.unplaced.length).total
-}
 
 async function main() {
   const input = fullCollegeInput()
@@ -44,7 +27,7 @@ async function main() {
   const greedyOutput = solveGreedy(input)
   const greedyElapsedMs = Date.now() - greedyStart
   const greedyViolations = validateSolution(input, greedyOutput)
-  const greedyPenalty = realPenalty(input, greedyOutput)
+  const greedyPenalty = greedyOutput.penalty
 
   console.log(`\nжадная фаза: ${greedyElapsedMs} мс (лимит ${GREEDY_TIME_BUDGET_MS} мс)`)
   console.log(`размещено: ${greedyOutput.assignments.length} из ${input.units.length} (${greedyOutput.unplaced.length} в unplaced)`)

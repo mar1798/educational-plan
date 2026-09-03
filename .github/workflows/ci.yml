@@ -1,0 +1,40 @@
+# Проверки солвера в CI (§9.1 PLAN.md, задача этапа 6 «Бенчмарк и порог качества в CI»).
+# Всё запускается под Electron в режиме ELECTRON_RUN_AS_NODE (scripts/electron-node.mjs):
+# better-sqlite3 собран под ABI Electron, под обычным node тесты падают сегфолтом.
+# Дисплей при этом не нужен — окно не открывается, поэтому xvfb не требуется.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+
+  # Порог качества этапа 6: жадная фаза < 3 с, ноль жёстких нарушений и падение штрафа
+  # минимум на 40 % после локального поиска. `bench:solver` сам выходит с кодом 1, если
+  # порог не выдержан, — отдельная job, потому что прогон занимает около минуты.
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run bench:solver

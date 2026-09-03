@@ -83,7 +83,7 @@ export function findConflicts(candidate: SlotEntry, others: SlotEntry[]): Confli
 // намеренно простые и не заимствованные из occupancy.ts/hard.ts структуры данных.
 
 /** Помимо жёстких причин §5.4, валидатор ловит структурные аномалии решения. */
-export type ViolationReason = BlockReason | 'unknown_unit' | 'duplicate_unit' | 'lost_unit'
+export type ViolationReason = BlockReason | 'unknown_unit' | 'duplicate_unit' | 'lost_unit' | 'pair_split'
 
 export interface SolverViolation {
   unitId: number
@@ -274,6 +274,24 @@ export function validateSolution(input: SolverInput, output: SolverOutput): Solv
   for (const unit of input.units) {
     if (!seen.has(unit.id)) {
       violations.push({ unitId: unit.id, reason: 'lost_unit', detail: 'юнит отсутствует и в assignments, и в unplaced — часы потеряны' })
+    }
+  }
+
+  // Парные подгруппы (§9.1, уровень 3): либо обе размещены в одном слоте, либо обе не размещены.
+  // Односторонняя или битая ссылка парой не считается — так же, как в `greedy.ts`.
+  const slotOfUnit = new Map<number, number>()
+  for (const a of output.assignments) slotOfUnit.set(a.unitId, a.slot)
+  for (const unit of input.units) {
+    if (unit.pairedUnitId == null) continue
+    const partner = unitsById.get(unit.pairedUnitId)
+    if (!partner || partner.pairedUnitId !== unit.id) continue
+    const mine = slotOfUnit.get(unit.id)
+    const theirs = slotOfUnit.get(partner.id)
+    if (mine == null && theirs == null) continue
+    if (mine == null || theirs == null) {
+      violations.push({ unitId: unit.id, reason: 'pair_split', detail: `парная подгруппа #${partner.id} размещена, а этот юнит — нет` })
+    } else if (mine !== theirs) {
+      violations.push({ unitId: unit.id, reason: 'pair_split', detail: `парная подгруппа #${partner.id} стоит в слоте ${theirs}, а этот юнит — в ${mine}` })
     }
   }
 

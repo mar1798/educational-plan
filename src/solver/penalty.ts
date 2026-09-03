@@ -133,6 +133,18 @@ export function computeRawBreakdown(input: SolverInput, state: Solution, placed:
   const raw = zeroBreakdown()
 
   const spreadCount = new Map<string, number>()
+  // Закреплённые (`is_locked`) занятия в `spread` считаются наравне с расставленными: второе
+  // занятие той же дисциплины в тот же день у группы — это «размазанная дисциплина» (§5.5)
+  // независимо от того, поставил ли его солвер или завуч руками. Именно так их считает и
+  // инкрементальный подсчёт в `localSearch.ts`, а расхождение между двумя способами означало
+  // бы, что поиск оптимизирует не ту величину, которую потом показывает в отчёте.
+  for (const f of input.fixed) {
+    const day = input.slots[f.slot]!.day
+    for (const a of f.attendees) {
+      const key = `${a.groupIdx}|${f.disciplineIdx}|${day}`
+      spreadCount.set(key, (spreadCount.get(key) ?? 0) + 1)
+    }
+  }
   for (const p of placed) {
     const s = input.slots[p.slot]!
     raw.difficultyEarly += p.unit.difficulty * Math.max(0, s.pair - 2)

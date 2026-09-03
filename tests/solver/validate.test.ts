@@ -135,6 +135,50 @@ describe('validateSolution — независимый валидатор реш�
     expect(violations.some((v) => v.reason === 'teacher_busy')).toBe(true)
   })
 
+  it('ловит разорванную пару подгрупп: партнёры стоят в разных слотах', () => {
+    const teachers = [makeTeacher(0), makeTeacher(1)]
+    const group = makeGroup(0)
+    const rooms = [makeRoom(0), makeRoom(1)]
+    const unitA = makeUnit({ id: 11, teacherIdx: 0, students: 15, attendees: [{ groupIdx: 0, memberMask: [0xffff, 0] }], pairedUnitId: 12 })
+    const unitB = makeUnit({ id: 12, teacherIdx: 1, students: 15, attendees: [{ groupIdx: 0, memberMask: [0xffff0000, 0] }], pairedUnitId: 11 })
+    const input: SolverInput = {
+      units: [unitA, unitB],
+      teachers,
+      rooms,
+      buildings: [{ idx: 0, id: 1, clinicalMode: null }],
+      groups: [group],
+      slots: makeSlots(),
+      fixed: [],
+      weights: DEFAULT_WEIGHTS,
+      limits: { timeBudgetMs: 1000, maxIterations: 100, seed: 1 },
+    }
+    const output: SolverOutput = {
+      assignments: [
+        { unitId: 11, slot: slotIndex(1, 1), roomIdx: 0 },
+        { unitId: 12, slot: slotIndex(2, 3), roomIdx: 1 }, // партнёр уехал в другой слот — испорчено намеренно
+      ],
+      unplaced: [],
+      penalty: 0,
+      breakdown: {},
+      iterations: 1,
+      elapsedMs: 1,
+      stoppedBy: 'completed',
+    }
+    const violations = validateSolution(input, output)
+    expect(violations.filter((v) => v.reason === 'pair_split')).toHaveLength(2)
+
+    // Обе половины не размещены — это допустимо и нарушением не считается.
+    const bothUnplaced: SolverOutput = {
+      ...output,
+      assignments: [],
+      unplaced: [
+        { unitId: 11, reason: 'no_free_slot', details: { triedSlots: 0, blockedBy: [] } },
+        { unitId: 12, reason: 'no_free_slot', details: { triedSlots: 0, blockedBy: [] } },
+      ],
+    }
+    expect(validateSolution(input, bothUnplaced)).toEqual([])
+  })
+
   it('ловит потерянный юнит: отсутствует и в assignments, и в unplaced', () => {
     const teacher = makeTeacher(0)
     const group = makeGroup(0)
