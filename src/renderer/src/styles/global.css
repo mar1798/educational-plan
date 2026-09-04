@@ -420,8 +420,35 @@ table.data-table {
   padding: 24px;
 }
 
+.dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .dialog-content h2 {
   font-size: 17px;
+}
+
+.dialog-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.dialog-close:hover {
+  background: var(--color-bg);
+  color: var(--color-text);
 }
 
 .dialog-actions {
