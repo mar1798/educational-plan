@@ -6,7 +6,18 @@ import type { DbLike } from '../db/repo/types'
 import { calendarPeriod, semester } from '../db/schema/calendar'
 import { curriculum, curriculumRow, discipline } from '../db/schema/curriculum'
 import { studyGroup, teacher, teacherCategory } from '../db/schema/people'
-import { cellNumber, cellText, type Cell } from '../../shared/import/engine'
+import { teachingLoad } from '../db/schema/load'
+import {
+  CALENDAR_KIND_SYNONYMS,
+  LESSON_KIND_SYNONYMS,
+  TEACHER_CATEGORY_SYNONYMS,
+  cellNumber,
+  cellText,
+  matchesPersonName,
+  parseEnum,
+  parseIsoDate,
+  type Cell,
+} from '../../shared/import/engine'
 
 export interface ApplyResult {
   created: number
@@ -21,10 +32,26 @@ export interface ApplyResult {
  * отсутствующие справочные записи молча.
  */
 
-const TEACHER_CATEGORY_CODES = new Set(['staff', 'external', 'hourly'])
+const TEACHER_CATEGORY_CODES = ['staff', 'external', 'hourly'] as const
+
+/**
+ * Ключ «уже есть»: импорт файла дважды (а завуч повторяет его, поправив пару строк)
+ * заводил вторые копии тех же людей и строк — уникальности в БД на них нет. Повтор
+ * теперь не создаётся, а попадает в пропущенные с причиной, и файл можно перезаливать.
+ */
+function sameKey(...parts: (string | number | null)[]): string {
+  return parts.map((p) => (p == null ? '' : String(p).trim().toLowerCase())).join('\u0000')
+}
 
 export function applyTeacherRows(tx: DbLike, rows: Record<string, Cell>[], ctx: AuditContext = {}): ApplyResult {
   const categories = tx.select().from(teacherCategory).all()
+  const seen = new Set(
+    tx
+      .select()
+      .from(teacher)
+      .all()
+      .map((t) => sameKey(t.lastName, t.firstName, t.middleName)),
+  )
   const skipped: ApplyResult['skipped'] = []
   let created = 0
 
@@ -35,9 +62,14 @@ export function applyTeacherRows(tx: DbLike, rows: Record<string, Cell>[], ctx: 
       skipped.push({ row, reason: 'не указана фамилия или имя' })
       continue
     }
-    const categoryCode = cellText(row.categoryCode ?? null) || 'staff'
-    if (!TEACHER_CATEGORY_CODES.has(categoryCode)) {
-      skipped.push({ row, reason: `неизвестная категория «${categoryCode}»` })
+    // Категория принимается и кодом (`hourly`), и по-русски: названием из справочника
+    // («Почасовик») или обиходным синонимом («штат», «внештат»). Файл колледжа ведётся
+    // по-русски, и раньше нормальная строка отбивалась как «неизвестная категория».
+    const categoryText = cellText(row.categoryCode ?? null)
+    const byTitle = categories.find((c) => c.titleRu.trim().toLowerCase() === categoryText.trim().toLowerCase())
+    const categoryCode = categoryText === '' ? 'staff' : (byTitle?.code ?? parseEnum(categoryText, TEACHER_CATEGORY_CODES, TEACHER_CATEGORY_SYNONYMS))
+    if (categoryCode == null) {
+      skipped.push({ row, reason: `неизвестная категория «${categoryText}»` })
       continue
     }
     const category = categories.find((c) => c.code === categoryCode)
@@ -46,16 +78,25 @@ export function applyTeacherRows(tx: DbLike, rows: Record<string, Cell>[], ctx: 
       continue
     }
 
+    const middleName = cellText(row.middleName ?? null) || null
+    const key = sameKey(lastName, firstName, middleName)
+    if (seen.has(key)) {
+      skipped.push({ row, reason: `${lastName} ${firstName} уже есть в справочнике` })
+      continue
+    }
+    seen.add(key)
+
     createRow(
       tx,
       teacher,
       {
         lastName,
         firstName,
-        middleName: cellText(row.middleName ?? null) || null,
+        middleName,
         categoryId: category.id,
         phone: cellText(row.phone ?? null) || null,
         mainWorkplace: cellText(row.mainWorkplace ?? null) || null,
+        availabilityNote: cellText(row.availabilityNote ?? null) || null,
       },
       ctx,
     )
@@ -65,31 +106,51 @@ export function applyTeacherRows(tx: DbLike, rows: Record<string, Cell>[], ctx: 
   return { created, skipped }
 }
 
-const CALENDAR_PERIOD_KINDS = new Set(['theory', 'practice', 'prequal_practice', 'vacation', 'session', 'iga', 'quarantine'])
+const CALENDAR_PERIOD_KINDS = ['theory', 'practice', 'prequal_practice', 'vacation', 'session', 'iga', 'quarantine'] as const
 
 export function applyCalendarPeriodRows(tx: DbLike, rows: Record<string, Cell>[], ctx: AuditContext = {}): ApplyResult {
+  const seen = new Set(
+    tx
+      .select()
+      .from(calendarPeriod)
+      .all()
+      .map((p) => sameKey(p.kind, p.course, p.startsOn, p.endsOn)),
+  )
   const skipped: ApplyResult['skipped'] = []
   let created = 0
 
   for (const row of rows) {
-    const kind = cellText(row.kind ?? null)
-    if (!CALENDAR_PERIOD_KINDS.has(kind)) {
-      skipped.push({ row, reason: `неизвестный тип периода «${kind}»` })
+    const kind = parseEnum(row.kind ?? null, CALENDAR_PERIOD_KINDS, CALENDAR_KIND_SYNONYMS)
+    if (kind == null) {
+      skipped.push({ row, reason: `неизвестный тип периода «${cellText(row.kind ?? null)}»` })
       continue
     }
-    const startsOn = cellText(row.startsOn ?? null)
-    const endsOn = cellText(row.endsOn ?? null)
+    const startsOn = parseIsoDate(row.startsOn ?? null)
+    const endsOn = parseIsoDate(row.endsOn ?? null)
     if (!startsOn || !endsOn) {
-      skipped.push({ row, reason: 'не указана дата начала или окончания' })
+      const shown = [cellText(row.startsOn ?? null), cellText(row.endsOn ?? null)].filter((x) => x !== '').join(' — ')
+      skipped.push({ row, reason: shown === '' ? 'не указана дата начала или окончания' : `дата не распознана: «${shown}» (ожидается ГГГГ-ММ-ДД или ДД.ММ.ГГГГ)` })
       continue
     }
+    if (endsOn < startsOn) {
+      skipped.push({ row, reason: `дата окончания ${endsOn} раньше даты начала ${startsOn}` })
+      continue
+    }
+
+    const course = cellNumber(row.course ?? null)
+    const key = sameKey(kind, course, startsOn, endsOn)
+    if (seen.has(key)) {
+      skipped.push({ row, reason: `такой период уже есть в календаре (${startsOn} — ${endsOn})` })
+      continue
+    }
+    seen.add(key)
 
     createRow(
       tx,
       calendarPeriod,
       {
-        kind: kind as (typeof calendarPeriod.$inferInsert)['kind'],
-        course: cellNumber(row.course ?? null),
+        kind,
+        course,
         specialityId: null,
         groupId: null,
         startsOn,
@@ -112,6 +173,14 @@ export function applyCurriculumRows(
   ctx: AuditContext = {},
 ): ApplyResult {
   const disciplines = tx.select().from(discipline).all()
+  const seen = new Set(
+    tx
+      .select()
+      .from(curriculumRow)
+      .where(and(eq(curriculumRow.curriculumId, curriculumId), isNull(curriculumRow.validTo)))
+      .all()
+      .map((r) => sameKey(r.disciplineId, r.course, r.semesterNo)),
+  )
   const skipped: ApplyResult['skipped'] = []
   let created = 0
 
@@ -131,6 +200,13 @@ export function applyCurriculumRows(
       skipped.push({ row, reason: 'не хватает обязательных числовых полей (курс/семестр/кредиты/часы)' })
       continue
     }
+
+    const key = sameKey(found.id, course, semesterNo)
+    if (seen.has(key)) {
+      skipped.push({ row, reason: `«${found.name}» уже есть в этом плане на ${course} курсе, семестр ${semesterNo}` })
+      continue
+    }
+    seen.add(key)
 
     createRow(
       tx,
@@ -159,7 +235,7 @@ export function applyCurriculumRows(
   return { created, skipped }
 }
 
-const LESSON_KINDS = new Set(['theory', 'practice', 'seminar', 'lab'])
+const LESSON_KINDS = ['theory', 'practice', 'seminar', 'lab'] as const
 
 /**
  * Строка нагрузки из файла резолвится в конкретную curriculum_row через тот же
@@ -179,12 +255,19 @@ export function applyTeachingLoadRows(
   const teachers = tx.select().from(teacher).all()
   const groups = tx.select().from(studyGroup).all()
   const disciplines = tx.select().from(discipline).all()
+  const seen = new Set(
+    tx
+      .select()
+      .from(teachingLoad)
+      .where(and(eq(teachingLoad.semesterId, semesterId), isNull(teachingLoad.validTo)))
+      .all()
+      .map((l) => sameKey(l.curriculumRowId, l.teacherId, l.groupId, l.subgroupId, l.lessonKind)),
+  )
   const skipped: ApplyResult['skipped'] = []
   let created = 0
 
   for (const row of rows) {
-    const teacherName = cellText(row.teacherName ?? null).toLowerCase()
-    const t = teachers.find((x) => `${x.lastName} ${x.firstName}`.toLowerCase() === teacherName)
+    const t = teachers.find((x) => matchesPersonName(row.teacherName ?? null, x.lastName, x.firstName))
     if (!t) {
       skipped.push({ row, reason: `преподаватель «${cellText(row.teacherName ?? null)}» не найден (ожидается «Фамилия Имя»)` })
       continue
@@ -201,9 +284,9 @@ export function applyTeachingLoadRows(
       skipped.push({ row, reason: `дисциплина «${disciplineName}» не найдена` })
       continue
     }
-    const lessonKind = cellText(row.lessonKind ?? null)
-    if (!LESSON_KINDS.has(lessonKind)) {
-      skipped.push({ row, reason: `неизвестный вид занятия «${lessonKind}»` })
+    const lessonKind = parseEnum(row.lessonKind ?? null, LESSON_KINDS, LESSON_KIND_SYNONYMS)
+    if (lessonKind == null) {
+      skipped.push({ row, reason: `неизвестный вид занятия «${cellText(row.lessonKind ?? null)}»` })
       continue
     }
     const hoursPlanned = cellNumber(row.hoursPlanned ?? null)
@@ -240,6 +323,15 @@ export function applyTeachingLoadRows(
       continue
     }
 
+    // Ключ без подгруппы: импорт заводит нагрузку на группу целиком, и повторная заливка
+    // того же файла иначе удваивала часы, а затем упиралась в недельный лимит группы.
+    const key = sameKey(planRow.id, t.id, g.id, null, lessonKind)
+    if (seen.has(key)) {
+      skipped.push({ row, reason: `у ${t.lastName} ${t.firstName} уже есть такая нагрузка по «${disciplineName}» в группе «${g.name}»` })
+      continue
+    }
+    seen.add(key)
+
     try {
       saveTeachingLoad(
         tx,
@@ -251,7 +343,7 @@ export function applyTeachingLoadRows(
           streamId: null,
           divisionSchemeId: null,
           subgroupId: null,
-          lessonKind: lessonKind as 'theory' | 'practice' | 'seminar' | 'lab',
+          lessonKind,
           hoursPlanned,
           requiresParallel: false,
           roomTypeRequired: null,

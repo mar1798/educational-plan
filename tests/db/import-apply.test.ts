@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { applyCalendarPeriodRows, applyCurriculumRows, applyTeacherRows, applyTeachingLoadRows } from '../../src/main/import/apply'
 import * as schema from '../../src/main/db/schema'
 import { createTestDb, seedMinimalWorld, type MinimalWorld } from './helpers'
+import { ensureTeacherCategories } from '../../src/main/db/repo/seed'
 
 describe('применение размеченных строк импорта к таблицам (§3.8, §3.8e)', () => {
   let ctx: ReturnType<typeof createTestDb>
@@ -99,5 +100,85 @@ describe('применение размеченных строк импорта 
     )
     expect(result.created).toBe(0)
     expect(result.skipped[0]!.reason).toContain('квалификации')
+  })
+  it('принимает категорию преподавателя по-русски — названием справочника и обиходным синонимом', () => {
+    ensureTeacherCategories(ctx.db) // в минимальном мире заведена только штатная категория
+    const result = applyTeacherRows(ctx.db, [
+      { lastName: 'Назарова', firstName: 'Махабат', categoryCode: 'Почасовик' },
+      { lastName: 'Дикамбаев', firstName: 'Марат', categoryCode: 'внештат' },
+      { lastName: 'Абдиева', firstName: 'Жыпар', categoryCode: 'Штатный' },
+    ])
+    expect(result.created).toBe(3)
+    expect(result.skipped).toHaveLength(0)
+
+    const categories = new Map(ctx.db.select().from(schema.teacherCategory).all().map((c) => [c.id, c.code]))
+    const byName = (lastName: string) => {
+      const t = ctx.db.select().from(schema.teacher).where(eq(schema.teacher.lastName, lastName)).get()
+      return categories.get(t!.categoryId)
+    }
+    expect(byName('Назарова')).toBe('hourly')
+    expect(byName('Дикамбаев')).toBe('external')
+    expect(byName('Абдиева')).toBe('staff')
+  })
+
+  it('не заводит второй раз того же преподавателя при повторном импорте файла', () => {
+    ensureTeacherCategories(ctx.db)
+    const rows = [{ lastName: 'Назарова', firstName: 'Махабат', middleName: 'Женишбековна', categoryCode: 'Почасовик' }]
+    expect(applyTeacherRows(ctx.db, rows).created).toBe(1)
+
+    const again = applyTeacherRows(ctx.db, rows)
+    expect(again.created).toBe(0)
+    expect(again.skipped[0]!.reason).toContain('уже есть')
+    expect(ctx.db.select().from(schema.teacher).where(eq(schema.teacher.lastName, 'Назарова')).all()).toHaveLength(1)
+  })
+
+  it('принимает период календаря по-русски и дату в виде ДД.ММ.ГГГГ', () => {
+    const result = applyCalendarPeriodRows(ctx.db, [
+      { kind: 'Зимние каникулы', startsOn: '16.01.2027', endsOn: '08.02.2027' },
+      { kind: 'Производственная практика', course: 2, startsOn: '2026-10-01', endsOn: '2026-10-14' },
+    ])
+    expect(result.created).toBe(2)
+
+    const vacation = ctx.db.select().from(schema.calendarPeriod).where(eq(schema.calendarPeriod.kind, 'vacation')).get()
+    expect(vacation?.startsOn).toBe('2027-01-16')
+    expect(vacation?.endsOn).toBe('2027-02-08')
+  })
+
+  it('отбивает период с нераспознанной датой и с окончанием раньше начала', () => {
+    const result = applyCalendarPeriodRows(ctx.db, [
+      { kind: 'Каникулы', startsOn: 'январь', endsOn: '2027-02-08' },
+      { kind: 'Каникулы', startsOn: '2027-02-08', endsOn: '2027-01-16' },
+    ])
+    expect(result.created).toBe(0)
+    expect(result.skipped[0]!.reason).toContain('не распознана')
+    expect(result.skipped[1]!.reason).toContain('раньше даты начала')
+  })
+
+  it('принимает вид занятия по-русски и ФИО с отчеством, не задваивая строку при повторе', () => {
+    ctx.db.insert(schema.teacherQualification).values({ teacherId: world.teacherId, disciplineId: world.disciplineId, validFrom: '2020-01-01' }).run()
+    ctx.db.delete(schema.teachingLoad).where(eq(schema.teachingLoad.id, world.teachingLoadId)).run()
+
+    const rows = [{ teacherName: 'Иванова Т Петровна', groupName: '11 СД', disciplineName: 'Анатомия', lessonKind: 'Семинарское', hoursPlanned: 10 }]
+    const first = applyTeachingLoadRows(ctx.db, world.semesterId, rows, '2026-09-01')
+    expect(first.created).toBe(1)
+    expect(ctx.db.select().from(schema.teachingLoad).all().some((r) => r.lessonKind === 'seminar')).toBe(true)
+
+    const again = applyTeachingLoadRows(ctx.db, world.semesterId, rows, '2026-09-01')
+    expect(again.created).toBe(0)
+    expect(again.skipped[0]!.reason).toContain('уже есть')
+  })
+
+  it('не заводит вторую строку плана с той же дисциплиной, курсом и семестром', () => {
+    const otherCurriculumId = ctx.db
+      .insert(schema.curriculum)
+      .values({ specialityId: world.specialityId, admissionYear: 2031, name: 'План для повтора' })
+      .returning({ id: schema.curriculum.id })
+      .get().id
+    const rows = [{ disciplineName: 'Анатомия', course: 1, semesterNo: 1, credits: 4, hoursTotal: 120, hoursClassroom: 80 }]
+
+    expect(applyCurriculumRows(ctx.db, otherCurriculumId, rows, '2026-01-01').created).toBe(1)
+    const again = applyCurriculumRows(ctx.db, otherCurriculumId, rows, '2026-01-01')
+    expect(again.created).toBe(0)
+    expect(again.skipped[0]!.reason).toContain('уже есть')
   })
 })

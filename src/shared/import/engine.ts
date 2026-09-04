@@ -173,19 +173,20 @@ export const TARGET_SCHEMAS: Record<TargetEntity, TargetFieldSpec[]> = {
     { field: 'teacherName', labelRu: 'Преподаватель (Фамилия Имя)', required: true },
     { field: 'groupName', labelRu: 'Группа', required: true },
     { field: 'disciplineName', labelRu: 'Дисциплина', required: true },
-    { field: 'lessonKind', labelRu: 'Вид занятия (theory/practice/seminar/lab)', required: true },
+    { field: 'lessonKind', labelRu: 'Вид занятия (лекция/практическое/семинар/лабораторное)', required: true },
     { field: 'hoursPlanned', labelRu: 'Часы', required: true },
   ],
   teacher: [
     { field: 'lastName', labelRu: 'Фамилия', required: true },
     { field: 'firstName', labelRu: 'Имя', required: true },
     { field: 'middleName', labelRu: 'Отчество', required: false },
-    { field: 'categoryCode', labelRu: 'Категория (staff/external/hourly)', required: false },
+    { field: 'categoryCode', labelRu: 'Категория (штат/внештат/почасовик)', required: false },
     { field: 'phone', labelRu: 'Телефон', required: false },
     { field: 'mainWorkplace', labelRu: 'Основное место работы', required: false },
+    { field: 'availabilityNote', labelRu: 'Заметка о доступности', required: false },
   ],
   calendar_period: [
-    { field: 'kind', labelRu: 'Тип периода (theory/practice/prequal_practice/vacation/session/iga/quarantine)', required: true },
+    { field: 'kind', labelRu: 'Тип периода (теория/практика/каникулы/сессия/ИГА/карантин)', required: true },
     { field: 'course', labelRu: 'Курс', required: false },
     { field: 'startsOn', labelRu: 'Дата начала (ГГГГ-ММ-ДД)', required: true },
     { field: 'endsOn', labelRu: 'Дата окончания (ГГГГ-ММ-ДД)', required: true },
@@ -206,3 +207,128 @@ export function mapToEntity(rows: Grid, columns: ColumnMapping[]): Record<string
 }
 
 export { cellNumber, cellText }
+
+// ─────────────────────────────────────────────────────────────────────────────────────────
+// Разбор значений-перечислений и дат (§3.8e)
+
+/**
+ * Приведение к ключу сравнения: регистр, ё/е и лишние пробелы в рабочих файлах гуляют
+ * («Почасовик», «почасовик », «ПОЧАСОВИК»), и сравнение «как есть» отбивало нормальную
+ * строку с «неизвестная категория».
+ */
+function normalizeKey(text: string): string {
+  return text.trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ')
+}
+
+/**
+ * Значение перечисления из файла: сначала сам код (`hourly`), потом русское название из
+ * словаря синонимов. Завуч ведёт файл по-русски и сопоставляет ту колонку, которую видит;
+ * требовать от него колонку с латинским кодом — значит требовать готовить файл под
+ * программу, тогда как мастер задуман наоборот (§3.8, §1.1 п.5).
+ */
+export function parseEnum<T extends string>(cell: Cell, codes: readonly T[], synonyms: Record<string, T>): T | null {
+  const key = normalizeKey(cellText(cell))
+  if (key === '') return null
+  const byCode = codes.find((c) => c.toLowerCase() === key)
+  if (byCode) return byCode
+  return synonyms[key] ?? null
+}
+
+export const LESSON_KIND_SYNONYMS: Record<string, 'theory' | 'practice' | 'seminar' | 'lab'> = {
+  'теоретическое': 'theory',
+  'теория': 'theory',
+  'теоретическое занятие': 'theory',
+  'лекция': 'theory',
+  'лекционное': 'theory',
+  'лек.': 'theory',
+  'лек': 'theory',
+  'практическое': 'practice',
+  'практика': 'practice',
+  'практическое занятие': 'practice',
+  'практ.': 'practice',
+  'практ': 'practice',
+  'семинарское': 'seminar',
+  'семинар': 'seminar',
+  'семинарское занятие': 'seminar',
+  'сем.': 'seminar',
+  'сем': 'seminar',
+  'лабораторное': 'lab',
+  'лабораторная': 'lab',
+  'лаборатория': 'lab',
+  'лабораторное занятие': 'lab',
+  'лаб.': 'lab',
+  'лаб': 'lab',
+}
+
+export const CALENDAR_KIND_SYNONYMS: Record<string, 'theory' | 'practice' | 'prequal_practice' | 'vacation' | 'session' | 'iga' | 'quarantine'> = {
+  'теоретическое обучение': 'theory',
+  'теория': 'theory',
+  'практика': 'practice',
+  'производственная практика': 'practice',
+  'учебная практика': 'practice',
+  'преддипломная практика': 'prequal_practice',
+  'каникулы': 'vacation',
+  'зимние каникулы': 'vacation',
+  'летние каникулы': 'vacation',
+  'сессия': 'session',
+  'зимняя сессия': 'session',
+  'летняя сессия': 'session',
+  'экзаменационная сессия': 'session',
+  'ига': 'iga',
+  'итоговая государственная аттестация': 'iga',
+  'государственная итоговая аттестация': 'iga',
+  'карантин': 'quarantine',
+}
+
+export const TEACHER_CATEGORY_SYNONYMS: Record<string, 'staff' | 'external' | 'hourly'> = {
+  'штат': 'staff',
+  'штатный': 'staff',
+  'штатная': 'staff',
+  'основной': 'staff',
+  'шт': 'staff',
+  'внештат': 'external',
+  'внештатный': 'external',
+  'внештатная': 'external',
+  'внешний совместитель': 'external',
+  'совместитель': 'external',
+  'внеш': 'external',
+  'почасовик': 'hourly',
+  'почасовой': 'hourly',
+  'почасовая оплата': 'hourly',
+  'почас': 'hourly',
+}
+
+/**
+ * Дата из ячейки. Excel отдаёт настоящую дату уже как ГГГГ-ММ-ДД (см. workbook.ts), но
+ * в рабочих файлах даты часто набраны текстом — «01.09.2026», «1.9.2026», «01/09/2026».
+ * Раньше такие строки молча отбивались как «не указана дата», хотя в файле она есть.
+ */
+export function parseIsoDate(cell: Cell): string | null {
+  const text = cellText(cell)
+  if (text === '') return null
+
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(text)
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`
+
+  const dmy = /^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})$/.exec(text)
+  if (dmy) {
+    const [, d, m, y] = dmy
+    return `${y}-${m!.padStart(2, '0')}-${d!.padStart(2, '0')}`
+  }
+  return null
+}
+
+/**
+ * Совпадение ФИО из файла с парой «фамилия + имя» из справочника. В рабочих файлах имя
+ * пишут по-разному: «Абдиева Жыпар», «Абдиева Жыпар Салтанатовна», «Абдиева Ж.» — и точное
+ * сравнение с «Фамилия Имя» находило только первый вариант.
+ */
+export function matchesPersonName(cell: Cell, lastName: string, firstName: string): boolean {
+  const parts = normalizeKey(cellText(cell)).split(' ').filter((p) => p !== '')
+  if (parts.length < 2) return false
+  if (parts[0] !== normalizeKey(lastName)) return false
+
+  const given = normalizeKey(firstName)
+  const second = parts[1]!.replace(/\.$/, '')
+  return second === given || (second.length === 1 && given.startsWith(second))
+}
