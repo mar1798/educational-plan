@@ -18,7 +18,9 @@ interface BoundDraft {
   posTo: string
 }
 
-const SEGMENT_COLORS = ['#4f6bed', '#2ba86c', '#d97706', '#c0392b', '#8e44ad', '#0891b2']
+// Подписи на сегментах белые, поэтому оттенки затемнены до контраста не ниже 4.5:1:
+// прежние (#2ba86c, #d97706) давали на светлых мониторах Windows нечитаемую надпись.
+const SEGMENT_COLORS = ['#3949c9', '#1b7a4b', '#a45a06', '#b02f22', '#7a349a', '#0e7490']
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10)
