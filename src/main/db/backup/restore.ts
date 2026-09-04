@@ -1,8 +1,29 @@
-import { copyFileSync, existsSync, rmSync } from 'node:fs'
+import { copyFileSync, existsSync, renameSync, rmSync } from 'node:fs'
 import { basename, join } from 'node:path'
-import type Database from 'better-sqlite3'
+import Database from 'better-sqlite3'
 import type { Db } from '../client'
-import { backupsDir, createBackup } from './backup'
+import { backupsDir, snapshotDbFile, registerBackup } from './backup'
+import type { BackupSnapshot } from './backup'
+
+/**
+ * Переносит запись о снимке в *восстановленную* базу. Строка, вставленная в рабочую базу
+ * до подмены файла, исчезает вместе с ней, и снимок «состояние до восстановления» пропадает
+ * из списка — откатить ошибочный restore становится нечем.
+ */
+function registerInRestoredDb(dbPath: string, snapshot: BackupSnapshot): void {
+  let restored: Database.Database | null = null
+  try {
+    restored = new Database(dbPath)
+    restored
+      .prepare('insert into backup (file_name, created_at, reason, size_bytes, schema_version) values (?, ?, ?, ?, ?)')
+      .run(snapshot.fileName, snapshot.createdAt, snapshot.reason, snapshot.sizeBytes, snapshot.schemaVersion)
+  } catch {
+    // В бэкапе старой схемы таблицы `backup` может ещё не быть — сам файл снимка уже лежит
+    // в папке backups, и потеря строки не повод завалить восстановление.
+  } finally {
+    restored?.close()
+  }
+}
 
 /**
  * §1.7: «закрыть БД → подменить файл → перезапустить». Возвращает управление вызывающему,
@@ -21,7 +42,23 @@ export function restoreFromBackup(sqlite: Database.Database, db: Db, dbPath: str
   }
 
   // Бэкап текущего состояния перед восстановлением — на случай, если выбрали не тот файл.
-  createBackup(sqlite, db, dbPath, 'pre_restore')
+  const preRestore = snapshotDbFile(sqlite, dbPath, 'pre_restore')
+  registerBackup(db, dbPath, preRestore)
+
+  // Копирование прямо поверх рабочего файла не атомарно: упади оно на середине (диск полон,
+  // файл держит антивирус), рабочая база осталась бы обрезанной, а соединение — закрытым.
+  // Пишем рядом и подменяем переименованием, атомарным в пределах файловой системы.
+  const staging = `${dbPath}.restore`
+  try {
+    copyFileSync(source, staging)
+  } catch (error) {
+    try {
+      rmSync(staging, { force: true })
+    } catch {
+      // мусора могло и не остаться
+    }
+    throw error
+  }
 
   sqlite.close()
   for (const suffix of ['-wal', '-shm']) {
@@ -31,5 +68,7 @@ export function restoreFromBackup(sqlite: Database.Database, db: Db, dbPath: str
       // побочных файлов WAL может не быть
     }
   }
-  copyFileSync(source, dbPath)
+  renameSync(staging, dbPath)
+
+  registerInRestoredDb(dbPath, preRestore)
 }

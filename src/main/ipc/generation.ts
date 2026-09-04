@@ -8,6 +8,11 @@ import { buildSolverInput } from '../services/snapshot'
 import { SolverJob } from '../solver-host/manager'
 import { handle } from './register'
 
+// Черновик — это снимок целого колледжа (вход + решение) на десятки мегабайт. Раньше `drafts`
+// чистился только кнопками экрана генерации: уйдя с экрана и запустив расчёт заново, завуч
+// оставлял прежний черновик в памяти main до перезапуска приложения.
+const MAX_DRAFTS = 3
+
 interface Draft {
   templateId: number
   input: SolverInput
@@ -42,6 +47,8 @@ export function registerGenerationHandlers(db: Db, getWindow: () => BrowserWindo
         return
       }
       drafts.set(jobId, { templateId, input, output: message.output })
+      // Map хранит ключи в порядке вставки — самый старый черновик уходит первым.
+      for (const stale of [...drafts.keys()].slice(0, Math.max(0, drafts.size - MAX_DRAFTS))) drafts.delete(stale)
       win?.webContents.send('generation:done', { jobId, input, output: message.output })
     })
     jobs.set(jobId, job)

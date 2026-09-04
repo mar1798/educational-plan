@@ -48,6 +48,10 @@ export function canPlace(input: SolverInput, state: Solution, unit: Unit, slot: 
     const room = input.rooms[roomIdx]!
     if (room.capacity != null && room.capacity < unit.students) return 'room_capacity'
     if (unit.roomTypeRequired != null && room.roomType !== unit.roomTypeRequired) return 'room_type'
+    // Закреплённый кабинет — жёсткое ограничение, а не подсказка при переборе. В жадной
+    // фазе его достаточно держал `candidateRooms`, но `planSwap`/`planMove` в локальном
+    // поиске берут кабинет соседнего юнита напрямую, мимо `candidateRooms`.
+    if (unit.roomIdFixed != null && room.id !== unit.roomIdFixed) return 'room_fixed'
     if (unit.buildingIdxRequired != null && room.buildingIdx !== unit.buildingIdxRequired) return 'building_mismatch'
   } else if (!allowsNoRoom(unit)) {
     return 'no_room_candidate'

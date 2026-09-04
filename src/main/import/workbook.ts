@@ -38,11 +38,19 @@ export async function readSheetGrid(filePath: string, sheetName: string): Promis
   const sheet = workbook.getWorksheet(sheetName)
   if (!sheet) throw new Error(`Лист «${sheetName}» не найден в файле`)
 
+  // `rowCount` и `columnCount` в ExcelJS — не поля, а геттеры: `columnCount` на каждое
+  // обращение прогоняет `eachRow` по всему листу. В условии внутреннего цикла он вычислялся
+  // на каждой ячейке, и обход листа становился кубическим (строки × колонки × строки):
+  // «Годовая нагрузка» на 5000+ строк не дочитывалась и за десять минут, полностью
+  // заблокировав main-процесс на шаге «Загрузка листа…».
+  const rowCount = sheet.rowCount
+  const columnCount = sheet.columnCount
+
   const grid: Grid = []
-  for (let r = 1; r <= sheet.rowCount; r++) {
+  for (let r = 1; r <= rowCount; r++) {
     const row = sheet.getRow(r)
     const cells: Cell[] = []
-    for (let c = 1; c <= sheet.columnCount; c++) {
+    for (let c = 1; c <= columnCount; c++) {
       cells.push(cellValueToPrimitive(row.getCell(c).value))
     }
     grid.push(cells)

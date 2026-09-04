@@ -24,6 +24,18 @@ export function RolloutDialog({ templateId, defaultDateFrom, defaultDateTo, onCl
   const [expanded, setExpanded] = useState(false)
   const [busy, setBusy] = useState(false)
 
+  // Правка даты обесценивает уже показанный предпросмотр: без сброса «Применить» отправляло
+  // диапазон, которого пользователь не видел, а операция необратимо правит тысячи занятий.
+  function changeDateFrom(value: string) {
+    setDateFrom(value)
+    setPreview(null)
+  }
+
+  function changeDateTo(value: string) {
+    setDateTo(value)
+    setPreview(null)
+  }
+
   async function loadPreview() {
     if (!dateFrom || !dateTo) {
       notifyError('Укажите диапазон дат')
@@ -52,11 +64,11 @@ export function RolloutDialog({ templateId, defaultDateFrom, defaultDateTo, onCl
     <Dialog open onOpenChange={(next) => !next && onClose()} title="Раскатка шаблона на даты">
       <div className="form-field">
         <label htmlFor="rollout-from">С даты</label>
-        <input id="rollout-from" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+        <input id="rollout-from" type="date" value={dateFrom} onChange={(e) => changeDateFrom(e.target.value)} />
       </div>
       <div className="form-field">
         <label htmlFor="rollout-to">По дату</label>
-        <input id="rollout-to" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+        <input id="rollout-to" type="date" value={dateTo} onChange={(e) => changeDateTo(e.target.value)} />
       </div>
 
       {!preview ? (

@@ -55,6 +55,7 @@ const BLOCK_REASON_LABEL: Record<BlockReason, string> = {
   room_busy: 'кабинет занят',
   room_capacity: 'не хватает вместимости кабинета',
   room_type: 'не тот тип кабинета',
+  room_fixed: 'занятие закреплено за другим кабинетом',
   building_mismatch: 'кабинет не в нужном здании',
   group_day_limit: 'лимит пар в день у группы',
   teacher_day_limit: 'лимит пар в день у преподавателя',

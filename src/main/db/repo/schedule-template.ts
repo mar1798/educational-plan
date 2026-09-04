@@ -126,15 +126,90 @@ export function resolveEntryAttendees(tx: DbLike, teachingLoadId: number): Resol
   return [{ groupId: g.id, groupName: g.name, subgroupId: null, subgroupNo: null, posFrom: 1, posTo: g.studentsCount }]
 }
 
+/**
+ * Справочники, нужные для разбора записей шаблона, загруженные один раз.
+ *
+ * Раньше `templateEntriesView`/`loadSlotEntries` делали по 7–10 запросов НА КАЖДУЮ запись:
+ * на шаблоне колледжа (тысячи записей) это десятки тысяч синхронных обращений к SQLite в
+ * главном процессе — и так на каждое открытие «Шаблона недели» и на каждое перетаскивание
+ * занятия. Справочники малы, поэтому дешевле прочитать их целиком и собрать вид в памяти.
+ */
+export interface TemplateLookup {
+  loads: Map<number, typeof teachingLoad.$inferSelect>
+  teachers: Map<number, typeof teacher.$inferSelect>
+  rows: Map<number, typeof curriculumRow.$inferSelect>
+  disciplines: Map<number, typeof discipline.$inferSelect>
+  rooms: Map<number, typeof room.$inferSelect>
+  groups: Map<number, typeof studyGroup.$inferSelect>
+  subgroups: Map<number, typeof subgroup.$inferSelect>
+  streams: Map<number, typeof stream.$inferSelect>
+  streamMembers: Map<number, (typeof streamMember.$inferSelect)[]>
+  pairHours: Map<number, number>
+}
+
+function byId<T extends { id: number }>(rows: T[]): Map<number, T> {
+  return new Map(rows.map((r) => [r.id, r]))
+}
+
+export function buildTemplateLookup(tx: DbLike): TemplateLookup {
+  const members = new Map<number, (typeof streamMember.$inferSelect)[]>()
+  for (const m of tx.select().from(streamMember).where(isNull(streamMember.validTo)).all()) {
+    const list = members.get(m.streamId)
+    if (list) list.push(m)
+    else members.set(m.streamId, [m])
+  }
+  return {
+    loads: byId(tx.select().from(teachingLoad).all()),
+    teachers: byId(tx.select().from(teacher).all()),
+    rows: byId(tx.select().from(curriculumRow).all()),
+    disciplines: byId(tx.select().from(discipline).all()),
+    rooms: byId(tx.select().from(room).all()),
+    groups: byId(tx.select().from(studyGroup).all()),
+    subgroups: byId(tx.select().from(subgroup).all()),
+    streams: byId(tx.select().from(stream).all()),
+    streamMembers: members,
+    pairHours: new Map(tx.select().from(pairGrid).all().map((p) => [p.pairNo, p.academicHours])),
+  }
+}
+
+/** Тот же разбор «кто присутствует», что и в `resolveEntryAttendees`, но по готовому индексу. */
+export function resolveAttendeesFrom(lookup: TemplateLookup, teachingLoadId: number): ResolvedAttendee[] {
+  const load = lookup.loads.get(teachingLoadId)
+  if (!load) throw new NotFoundError('teaching_load', teachingLoadId)
+
+  if (load.streamId != null) {
+    return (lookup.streamMembers.get(load.streamId) ?? []).map((m) => {
+      const g = lookup.groups.get(m.groupId)
+      if (!g) throw new NotFoundError('study_group', m.groupId)
+      return { groupId: g.id, groupName: g.name, subgroupId: null, subgroupNo: null, posFrom: 1, posTo: g.studentsCount }
+    })
+  }
+
+  if (load.groupId == null) {
+    throw new Error(`Строка нагрузки #${teachingLoadId}: не задана ни группа, ни поток`)
+  }
+  const g = lookup.groups.get(load.groupId)
+  if (!g) throw new NotFoundError('study_group', load.groupId)
+
+  if (load.subgroupId != null) {
+    const sg = lookup.subgroups.get(load.subgroupId)
+    if (!sg) throw new NotFoundError('subgroup', load.subgroupId)
+    return [{ groupId: g.id, groupName: g.name, subgroupId: sg.id, subgroupNo: sg.no, posFrom: sg.posFrom, posTo: sg.posTo }]
+  }
+
+  return [{ groupId: g.id, groupName: g.name, subgroupId: null, subgroupNo: null, posFrom: 1, posTo: g.studentsCount }]
+}
+
 /** Все записи шаблона в виде, пригодном для solver/validate.ts (§5.8). */
 export function loadSlotEntries(tx: DbLike, templateId: number, excludeEntryId?: number): SlotEntry[] {
   const rows = tx.select().from(templateEntry).where(eq(templateEntry.templateId, templateId)).all()
+  const lookup = buildTemplateLookup(tx)
   return rows
     .filter((r) => r.id !== excludeEntryId)
     .map((r) => {
-      const load = tx.select().from(teachingLoad).where(eq(teachingLoad.id, r.teachingLoadId)).get()
+      const load = lookup.loads.get(r.teachingLoadId)
       if (!load) throw new NotFoundError('teaching_load', r.teachingLoadId)
-      const attendees = resolveEntryAttendees(tx, r.teachingLoadId).map((a) => ({ groupId: a.groupId, posFrom: a.posFrom, posTo: a.posTo }))
+      const attendees = resolveAttendeesFrom(lookup, r.teachingLoadId).map((a) => ({ groupId: a.groupId, posFrom: a.posFrom, posTo: a.posTo }))
       return { id: r.id, dayOfWeek: r.dayOfWeek, pairNo: r.pairNo, weekParity: r.weekParity, teacherId: load.teacherId, roomId: r.roomId, attendees }
     })
 }
@@ -161,24 +236,25 @@ export interface TemplateEntryView {
   rowVersion: number
 }
 
-function targetLabelOf(tx: DbLike, load: { groupId: number | null; streamId: number | null }): string {
-  if (load.groupId != null) return studyGroupById(tx, load.groupId)?.name ?? `группа #${load.groupId}`
-  const s = tx.select().from(stream).where(eq(stream.id, load.streamId!)).get()
+function targetLabelOf(lookup: TemplateLookup, load: { groupId: number | null; streamId: number | null }): string {
+  if (load.groupId != null) return lookup.groups.get(load.groupId)?.name ?? `группа #${load.groupId}`
+  const s = load.streamId != null ? lookup.streams.get(load.streamId) : undefined
   return s ? s.name : `поток #${load.streamId}`
 }
 
 /** Все записи шаблона одним запросом-обходом, с уже разрешёнными именами и attendees (§4.6 PLAN.md, задача 4.6). */
 export function templateEntriesView(tx: DbLike, templateId: number): TemplateEntryView[] {
   const entries = tx.select().from(templateEntry).where(eq(templateEntry.templateId, templateId)).all()
-  const pairHours = new Map(tx.select().from(pairGrid).all().map((p) => [p.pairNo, p.academicHours]))
+  const lookup = buildTemplateLookup(tx)
+  const pairHours = lookup.pairHours
 
   return entries.map((e) => {
-    const load = tx.select().from(teachingLoad).where(eq(teachingLoad.id, e.teachingLoadId)).get()
+    const load = lookup.loads.get(e.teachingLoadId)
     if (!load) throw new NotFoundError('teaching_load', e.teachingLoadId)
-    const t = tx.select().from(teacher).where(eq(teacher.id, load.teacherId)).get()
-    const row = tx.select().from(curriculumRow).where(eq(curriculumRow.id, load.curriculumRowId)).get()
-    const disc = row ? tx.select().from(discipline).where(eq(discipline.id, row.disciplineId)).get() : undefined
-    const r = e.roomId != null ? tx.select().from(room).where(eq(room.id, e.roomId)).get() : undefined
+    const t = lookup.teachers.get(load.teacherId)
+    const row = lookup.rows.get(load.curriculumRowId)
+    const disc = row ? lookup.disciplines.get(row.disciplineId) : undefined
+    const r = e.roomId != null ? lookup.rooms.get(e.roomId) : undefined
 
     return {
       id: e.id,
@@ -197,8 +273,8 @@ export function templateEntriesView(tx: DbLike, templateId: number): TemplateEnt
       disciplineName: disc?.name ?? '—',
       lessonKind: load.lessonKind,
       academicHours: pairHours.get(e.pairNo) ?? 2,
-      targetLabel: targetLabelOf(tx, load),
-      attendees: resolveEntryAttendees(tx, e.teachingLoadId),
+      targetLabel: targetLabelOf(lookup, load),
+      attendees: resolveAttendeesFrom(lookup, e.teachingLoadId),
       rowVersion: e.rowVersion,
     }
   })
@@ -234,7 +310,8 @@ export function unassignedLoadForTemplate(tx: DbLike, templateId: number): Unass
   const sem = tx.select().from(semester).where(eq(semester.id, tmpl.semesterId)).get()
   if (!sem) throw new NotFoundError('semester', tmpl.semesterId)
 
-  const pairHours = new Map(tx.select().from(pairGrid).all().map((p) => [p.pairNo, p.academicHours]))
+  const lookup = buildTemplateLookup(tx)
+  const pairHours = lookup.pairHours
   const entries = tx.select().from(templateEntry).where(eq(templateEntry.templateId, templateId)).all()
 
   const assignedByLoad = new Map<number, number>()
@@ -255,21 +332,21 @@ export function unassignedLoadForTemplate(tx: DbLike, templateId: number): Unass
     const remaining = load.hoursPlanned - assigned
     if (remaining <= 0) continue
 
-    const t = tx.select().from(teacher).where(eq(teacher.id, load.teacherId)).get()
-    const row = tx.select().from(curriculumRow).where(eq(curriculumRow.id, load.curriculumRowId)).get()
-    const disc = row ? tx.select().from(discipline).where(eq(discipline.id, row.disciplineId)).get() : undefined
+    const t = lookup.teachers.get(load.teacherId)
+    const row = lookup.rows.get(load.curriculumRowId)
+    const disc = row ? lookup.disciplines.get(row.disciplineId) : undefined
 
     result.push({
       teachingLoadId: load.id,
       teacherId: load.teacherId,
       teacherName: t ? `${t.lastName} ${t.firstName}` : `#${load.teacherId}`,
       disciplineName: disc?.name ?? '—',
-      targetLabel: targetLabelOf(tx, load),
+      targetLabel: targetLabelOf(lookup, load),
       lessonKind: load.lessonKind,
       hoursPlanned: load.hoursPlanned,
       hoursAssigned: Math.round(assigned),
       hoursRemaining: Math.round(remaining),
-      attendees: resolveEntryAttendees(tx, load.id),
+      attendees: resolveAttendeesFrom(lookup, load.id),
     })
   }
   return result
@@ -476,25 +553,36 @@ export function removeEntry(tx: DbLike, id: number, rowVersion: number, ctx: Aud
   deleteRow(tx, templateEntry, id, ctx)
 }
 
-/** Есть ли у группы на дату непрерывный период вида «не теория» (практика/сессия/ИГА/карантин) — §4.3, §4.8. */
-function isGroupOnNonTheoryPeriod(tx: DbLike, groupId: number, date: string): boolean {
-  const g = studyGroupById(tx, groupId)
-  if (!g) return false
-  const periods = tx
-    .select({ id: calendarPeriod.id })
-    .from(calendarPeriod)
-    .where(
-      and(
-        sql`${calendarPeriod.startsOn} <= ${date}`,
-        sql`${calendarPeriod.endsOn} >= ${date}`,
-        sql`${calendarPeriod.kind} != 'theory'`,
-        sql`(${calendarPeriod.groupId} is null or ${calendarPeriod.groupId} = ${groupId})`,
-        sql`(${calendarPeriod.specialityId} is null or ${calendarPeriod.specialityId} = ${g.specialityId})`,
-        sql`(${calendarPeriod.course} is null or ${calendarPeriod.course} = ${g.course})`,
-      ),
-    )
-    .all()
-  return periods.length > 0
+/**
+ * Тот же предикат, но по один раз загруженным периодам и с памятью на пару (группа, дата).
+ * В `planRollout` он вызывается на каждой паре (дата × запись шаблона × слушатель): для
+ * семестра это сотни тысяч вызовов, и запрос к `calendar_period` внутри каждого делал
+ * раскатку самой долгой операцией приложения.
+ */
+function nonTheoryPeriodChecker(tx: DbLike): (groupId: number, date: string) => boolean {
+  const groups = new Map(tx.select().from(studyGroup).all().map((g) => [g.id, g]))
+  const periods = tx.select().from(calendarPeriod).where(sql`${calendarPeriod.kind} != 'theory'`).all()
+  const cache = new Map<string, boolean>()
+
+  return (groupId, date) => {
+    const key = `${groupId}#${date}`
+    const cached = cache.get(key)
+    if (cached !== undefined) return cached
+
+    const g = groups.get(groupId)
+    const result =
+      g != null &&
+      periods.some(
+        (p) =>
+          p.startsOn <= date &&
+          p.endsOn >= date &&
+          (p.groupId == null || p.groupId === groupId) &&
+          (p.specialityId == null || p.specialityId === g.specialityId) &&
+          (p.course == null || p.course === g.course),
+      )
+    cache.set(key, result)
+    return result
+  }
 }
 
 export interface RolloutChangeItem {
@@ -538,6 +626,7 @@ export function planRollout(tx: DbLike, input: { templateId: number; dateFrom: s
   const from = input.dateFrom > tmpl.effectiveFrom ? input.dateFrom : tmpl.effectiveFrom
   const to = input.dateTo
   const entries = templateEntriesView(tx, input.templateId)
+  const isNonTheory = nonTheoryPeriodChecker(tx)
 
   const rangeLessons = tx
     .select({ l: lesson })
@@ -570,8 +659,17 @@ export function planRollout(tx: DbLike, input: { templateId: number; dateFrom: s
   let toUpdate = 0
   let toCancel = 0
 
+  const calendarDaysInRange = new Map(
+    tx
+      .select()
+      .from(calendarDay)
+      .where(and(sql`${calendarDay.date} >= ${from}`, sql`${calendarDay.date} <= ${to}`))
+      .all()
+      .map((d) => [d.date, d]),
+  )
+
   for (let date = from; date <= to; date = addDays(date, 1)) {
-    const calDay = tx.select().from(calendarDay).where(eq(calendarDay.date, date)).get()
+    const calDay = calendarDaysInRange.get(date)
     if (calDay && (calDay.kind === 'holiday' || calDay.kind === 'vacation' || calDay.kind === 'weekend')) continue
 
     const dow = calDay?.kind === 'moved_workday' && calDay.movedFromDate ? dayOfWeekOf(calDay.movedFromDate) : dayOfWeekOf(date)
@@ -588,7 +686,7 @@ export function planRollout(tx: DbLike, input: { templateId: number; dateFrom: s
       if (existingLesson) accounted.add(existingLesson.id)
       if (existingLesson?.status === 'held') continue
 
-      const onNonTheoryPeriod = entry.attendees.some((a) => isGroupOnNonTheoryPeriod(tx, a.groupId, date))
+      const onNonTheoryPeriod = entry.attendees.some((a) => isNonTheory(a.groupId, date))
 
       if (onNonTheoryPeriod) {
         if (existingLesson) {

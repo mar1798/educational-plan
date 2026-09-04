@@ -125,6 +125,7 @@ function dominantReason(blocked: BlockReason[]): UnplacedReason {
       return 'group_day_limit'
     case 'room_capacity':
     case 'room_type':
+    case 'room_fixed':
     case 'building_mismatch':
     case 'no_room_candidate':
       return 'no_suitable_room'
@@ -259,6 +260,7 @@ function placePair(
 
   for (const slotInfo of input.slots) {
     const slot = slotInfo.idx
+    const academicHours = slotInfo.academicHours
     for (const roomA of roomsA) {
       tried++
       const reasonA = canPlace(input, state, a, slot, roomA)
@@ -266,21 +268,30 @@ function placePair(
         blocked.push(reasonA)
         continue
       }
-      for (const roomB of roomsB) {
-        if (roomA != null && roomB === roomA) continue
-        const reasonB = canPlace(input, state, b, slot, roomB)
-        if (reasonB !== null) {
-          blocked.push(reasonB)
-          continue
+      // Половинки пары идут в один слот, значит вторая обязана быть совместима с уже
+      // поставленной первой: общий преподаватель, пересекающиеся подгруппы, одна аудитория.
+      // Без временного `occupy` проверка `b` шла по состоянию без `a`, и пара уезжала в слот
+      // с жёстким нарушением (teacher_busy / student_busy) — валидатор ловил это уже на выходе.
+      const scoreA = localScore(input, state, a, slot, roomA)
+      state.occupy(a, slot, roomA, academicHours)
+      try {
+        for (const roomB of roomsB) {
+          const reasonB = canPlace(input, state, b, slot, roomB)
+          if (reasonB !== null) {
+            blocked.push(reasonB)
+            continue
+          }
+          const score = scoreA + localScore(input, state, b, slot, roomB)
+          if (best === null || score < best.score) {
+            best = { slot, roomA, roomB, score }
+            bestCount = 1
+          } else if (score === best.score) {
+            bestCount++
+            if (rng.nextInt(bestCount) === 0) best = { slot, roomA, roomB, score }
+          }
         }
-        const score = localScore(input, state, a, slot, roomA) + localScore(input, state, b, slot, roomB)
-        if (best === null || score < best.score) {
-          best = { slot, roomA, roomB, score }
-          bestCount = 1
-        } else if (score === best.score) {
-          bestCount++
-          if (rng.nextInt(bestCount) === 0) best = { slot, roomA, roomB, score }
-        }
+      } finally {
+        state.vacate(a, slot, roomA, academicHours)
       }
     }
   }

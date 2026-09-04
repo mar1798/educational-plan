@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Curriculum, ImportApplyResult, ImportProfile, SheetInfo } from '../../../../shared/ipc/contract'
 import {
   applyContextInheritance,
@@ -57,6 +57,7 @@ export function ImportWizardPage() {
   const [sheetName, setSheetName] = useState<string | null>(null)
   const [grid, setGrid] = useState<Grid | null>(null)
   const [loadingGrid, setLoadingGrid] = useState(false)
+  const sheetRequestRef = useRef(0)
 
   const [dataStartRow, setDataStartRow] = useState(1)
   const [dataEndRow, setDataEndRow] = useState<number | ''>('')
@@ -87,7 +88,9 @@ export function ImportWizardPage() {
 
   const selectedProfile = profileId === '' ? null : (profiles.find((p) => p.id === profileId) ?? null)
   const fields = TARGET_SCHEMAS[targetEntity]
-  const columnCount = grid?.[0]?.length ?? 0
+  // По самой широкой строке, а не по первой: у реальных файлов верхние строки — заголовок
+  // в объединённых ячейках, и по нему колонок насчитывалось меньше, чем в данных.
+  const columnCount = useMemo(() => (grid ?? []).reduce((max, row) => Math.max(max, row.length), 0), [grid])
 
   function resetForNewFile() {
     setSheets([])
@@ -125,14 +128,18 @@ export function ImportWizardPage() {
 
   async function selectSheet(name: string) {
     if (!filePath) return
+    // Листы читаются с разной скоростью: без токена ответ по ранее выбранному большому листу
+    // приходил после ответа по маленькому и подменял сетку, не совпадающую с `sheetName`.
+    const reqId = ++sheetRequestRef.current
     setSheetName(name)
     setLoadingGrid(true)
     const res = await api.invoke('import:readGrid', { filePath, sheetName: name })
+    if (reqId !== sheetRequestRef.current) return
     setLoadingGrid(false)
     if (res.ok) {
       setGrid(res.value)
       setColumns((prev) => {
-        const width = res.value[0]?.length ?? 0
+        const width = res.value.reduce((max, row) => Math.max(max, row.length), 0)
         if (prev.length === width) return prev
         return Array.from({ length: width }, (_, i) => prev[i] ?? { field: '', inherit: false })
       })
@@ -152,7 +159,20 @@ export function ImportWizardPage() {
 
   const inheritColumnIndexes = useMemo(() => columns.map((c, i) => (c.inherit ? i : -1)).filter((i) => i >= 0), [columns])
   const inherited = useMemo(() => applyContextInheritance(rangedGrid, inheritColumnIndexes), [rangedGrid, inheritColumnIndexes])
-  const { dataRows, controlRows } = useMemo(() => filterServiceRows(inherited, servicePattern), [inherited, servicePattern])
+  // `filterServiceRows` компилирует `new RegExp` — недописанный шаблон («итого|всего(») бросал
+  // SyntaxError прямо в фазе рендера и уносил всё дерево вместе с настройками мастера.
+  const serviceFilter = useMemo(() => {
+    try {
+      return { ...filterServiceRows(inherited, servicePattern), patternError: null as string | null }
+    } catch (error) {
+      return {
+        dataRows: inherited,
+        controlRows: [] as Grid,
+        patternError: error instanceof Error ? error.message : 'некорректное регулярное выражение',
+      }
+    }
+  }, [inherited, servicePattern])
+  const { dataRows, controlRows, patternError } = serviceFilter
 
   const columnMapping = useMemo(() => columns.map((c, i) => ({ columnIndex: i, field: c.field })).filter((c) => c.field !== ''), [columns])
   const numericFieldColumns = useMemo(
@@ -348,8 +368,8 @@ export function ImportWizardPage() {
                       <td>
                         <strong>{rowNo}</strong>
                       </td>
-                      {row.slice(0, 16).map((cell, c) => (
-                        <td key={c}>{cellText(cell)}</td>
+                      {Array.from({ length: columnCount }, (_, c) => (
+                        <td key={c}>{cellText(row[c] ?? null)}</td>
                       ))}
                     </tr>
                   )
@@ -357,7 +377,7 @@ export function ImportWizardPage() {
               </tbody>
             </table>
           </div>
-          <p className="history-empty">Строк в выбранном диапазоне: {rangedGrid.length}. Показаны первые 60 строк и 16 колонок листа.</p>
+          <p className="history-empty">Строк в выбранном диапазоне: {rangedGrid.length}. Показаны первые 60 строк листа, все {columnCount} колонок — таблица прокручивается вбок.</p>
           <div className="dialog-actions">
             <button type="button" className="btn" onClick={() => setStep(2)}>
               ← Назад
@@ -385,13 +405,13 @@ export function ImportWizardPage() {
               <thead>
                 <tr>
                   <th>#</th>
-                  {Array.from({ length: Math.min(columnCount, 16) }, (_, c) => (
+                  {Array.from({ length: columnCount }, (_, c) => (
                     <th key={c}>Колонка {c + 1}</th>
                   ))}
                 </tr>
                 <tr>
                   <th>Поле</th>
-                  {Array.from({ length: Math.min(columnCount, 16) }, (_, c) => (
+                  {Array.from({ length: columnCount }, (_, c) => (
                     <th key={c}>
                       <select
                         value={columns[c]?.field ?? ''}
@@ -411,7 +431,7 @@ export function ImportWizardPage() {
                 </tr>
                 <tr>
                   <th>Наследовать (§3.8a)</th>
-                  {Array.from({ length: Math.min(columnCount, 16) }, (_, c) => (
+                  {Array.from({ length: columnCount }, (_, c) => (
                     <th key={c}>
                       <input
                         type="checkbox"
@@ -428,8 +448,8 @@ export function ImportWizardPage() {
                 {rangedGrid.slice(0, 8).map((row, idx) => (
                   <tr key={idx}>
                     <td>образец</td>
-                    {row.slice(0, 16).map((cell, c) => (
-                      <td key={c}>{cellText(cell)}</td>
+                    {Array.from({ length: columnCount }, (_, c) => (
+                      <td key={c}>{cellText(row[c] ?? null)}</td>
                     ))}
                   </tr>
                 ))}
@@ -439,7 +459,13 @@ export function ImportWizardPage() {
 
           <div className="form-field" style={{ marginTop: 12 }}>
             <label>Правило служебных строк «Итого/ВСЕГО» (§3.8b, регулярное выражение)</label>
-            <input type="text" value={servicePattern} onChange={(e) => setServicePattern(e.target.value)} />
+            <input
+              type="text"
+              value={servicePattern}
+              onChange={(e) => setServicePattern(e.target.value)}
+              aria-invalid={patternError != null}
+            />
+            {patternError && <span className="form-error">Правило не применено: {patternError}</span>}
           </div>
           <p className="history-empty">
             Строк данных: {dataRows.length}, строк-сумм: {controlRows.length}
@@ -590,9 +616,20 @@ export function ImportWizardPage() {
             <button type="button" className="btn" onClick={() => setStep(4)}>
               ← Назад
             </button>
-            <button type="button" className="btn btn-primary" disabled={!canApply || applying} onClick={() => void apply()}>
-              Применить
-            </button>
+            {/* `import:apply` не идемпотентен: повторное нажатие создало бы второй комплект строк.
+                После успеха шаг 5 становится терминальным — дальше только новый файл. */}
+            {applyResult ? (
+              <button type="button" className="btn btn-primary" onClick={() => {
+                  resetForNewFile()
+                  setStep(1)
+                }}>
+                Импортировать ещё файл
+              </button>
+            ) : (
+              <button type="button" className="btn btn-primary" disabled={!canApply || applying} onClick={() => void apply()}>
+                {applying ? 'Применяем…' : 'Применить'}
+              </button>
+            )}
           </div>
         </div>
       )}

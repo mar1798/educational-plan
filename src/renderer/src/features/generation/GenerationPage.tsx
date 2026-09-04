@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Discipline, ScheduleTemplate, StudyGroup, Teacher } from '../../../../shared/ipc/contract'
 import { describeUnplaced } from '../../../../shared/schedule/messages'
@@ -95,6 +95,21 @@ export function GenerationPage() {
       offFailed()
     }
   }, [jobId])
+
+  // Уход с экрана посреди расчёта оставлял процесс солвера крутиться до конца бюджета (до 60 с
+  // на 100% CPU), а его результат — висеть черновиком в памяти main: jobId терялся вместе с
+  // компонентом, и отменить расчёт становилось нечем.
+  const abandonableJobRef = useRef<string | null>(null)
+  useEffect(() => {
+    abandonableJobRef.current = draft ? null : jobId
+  }, [jobId, draft])
+  useEffect(
+    () => () => {
+      const id = abandonableJobRef.current
+      if (id) void api.invoke('generation:cancel', { jobId: id })
+    },
+    [],
+  )
 
   const teacherById = useMemo(() => new Map(teachers.map((t) => [t.id, t])), [teachers])
   const disciplineById = useMemo(() => new Map(disciplines.map((d) => [d.id, d])), [disciplines])

@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, dialog } from 'electron'
 import { createBackup, registerBackup, snapshotDbFile } from './db/backup/backup'
 import { createDb } from './db/client'
 import { hasPendingMigrations, runMigrations } from './db/migrate'
@@ -48,6 +48,31 @@ function dbPath(): string {
 
 let mainWindow: BrowserWindow | null = null
 
+/**
+ * Единственная точка создания окна: обработчик 'closed' обязан висеть на КАЖДОМ окне.
+ * Раньше его вешали только на первое, и после закрытия окна, пересозданного по 'activate'
+ * (macOS), `mainWindow` продолжал указывать на уничтоженный BrowserWindow — фоновая
+ * отправка 'generation:progress'/'done' роняла main-процесс.
+ */
+function openMainWindow(): BrowserWindow {
+  const win = createMainWindow()
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null
+  })
+  return win
+}
+
+/** Окно, в которое ещё можно слать сообщения: уничтоженное не годится. */
+function liveWindow(): BrowserWindow | null {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return null
+  return mainWindow
+}
+
+function reportFatal(error: unknown): void {
+  const message = error instanceof Error ? `${error.message}\n\n${error.stack ?? ''}` : String(error)
+  dialog.showErrorBox('Не удалось запустить приложение', message)
+}
+
 async function bootstrap() {
   await app.whenReady()
 
@@ -73,7 +98,7 @@ async function bootstrap() {
   registerSettingsHandlers(db)
   registerOperationsHandlers(db)
   registerAuditHandlers(db)
-  registerBackupHandlers({ sqlite, db, dbPath: path, getWindow: () => mainWindow })
+  registerBackupHandlers({ sqlite, db, dbPath: path, getWindow: liveWindow })
   registerSpecialitiesHandlers(db)
   registerCmcHandlers(db)
   registerBuildingsHandlers(db)
@@ -94,20 +119,17 @@ async function bootstrap() {
   registerCurriculumHandlers(db)
   registerTeachingLoadHandlers(db)
   registerScheduleTemplateHandlers(db)
-  registerGenerationHandlers(db, () => mainWindow)
-  registerExportHandlers(db, () => mainWindow)
-  registerImportHandlers({ db, getWindow: () => mainWindow })
+  registerGenerationHandlers(db, liveWindow)
+  registerExportHandlers(db, liveWindow)
+  registerImportHandlers({ db, getWindow: liveWindow })
   registerSubstitutionsHandlers(db)
   registerReportsHandlers(db)
 
-  mainWindow = createMainWindow()
-  mainWindow.on('closed', () => {
-    mainWindow = null
-  })
+  mainWindow = openMainWindow()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      mainWindow = createMainWindow()
+      mainWindow = openMainWindow()
     }
   })
 }
@@ -116,4 +138,19 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-void bootstrap()
+// Без этого блока любая ошибка старта (битая БД, упавшая миграция, занятый файл) оставляла
+// невидимый процесс Electron без окна и без единого сообщения — пользователь видел, что
+// «приложение не запускается», и снимал процесс через диспетчер задач.
+process.on('uncaughtException', (error) => {
+  reportFatal(error)
+  app.exit(1)
+})
+process.on('unhandledRejection', (reason) => {
+  reportFatal(reason)
+  app.exit(1)
+})
+
+bootstrap().catch((error: unknown) => {
+  reportFatal(error)
+  app.exit(1)
+})

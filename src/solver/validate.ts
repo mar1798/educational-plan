@@ -222,6 +222,9 @@ export function validateSolution(input: SolverInput, output: SolverOutput): Solv
         if (unit.roomTypeRequired != null && room.roomType !== unit.roomTypeRequired) {
           violations.push({ unitId: unit.id, reason: 'room_type', detail: `нужен тип «${unit.roomTypeRequired}», кабинет — «${room.roomType}»` })
         }
+        if (unit.roomIdFixed != null && room.id !== unit.roomIdFixed) {
+          violations.push({ unitId: unit.id, reason: 'room_fixed', detail: `занятие закреплено за кабинетом #${unit.roomIdFixed}, назначен #${room.id}` })
+        }
         if (unit.buildingIdxRequired != null && room.buildingIdx !== unit.buildingIdxRequired) {
           violations.push({ unitId: unit.id, reason: 'building_mismatch', detail: 'кабинет не в требуемом здании' })
         }

@@ -164,6 +164,7 @@ export type BlockReason =
   | 'room_busy'
   | 'room_capacity'
   | 'room_type'
+  | 'room_fixed'
   | 'building_mismatch'
   | 'group_day_limit'
   | 'teacher_day_limit'
