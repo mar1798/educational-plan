@@ -462,7 +462,9 @@ export const curriculumWeeksListInput = z.object({ curriculumRowId: z.number().i
 
 export const curriculumWeeksGenerateInput = z.object({
   curriculumRowId: z.number().int().positive(),
-  weekCount: z.number().int().positive('Укажите число недель'),
+  // Верхняя граница — учебный год: опечатка вроде «180» вместо «18» раньше порождала
+  // сотни строк недельной раскладки и столько же записей в журнале изменений.
+  weekCount: z.number().int().positive('Укажите число недель').max(53, 'Недель в учебном году не больше 53'),
 })
 
 const curriculumWeekSaveRowInput = z.object({

@@ -1,8 +1,44 @@
 import { ipcMain } from 'electron'
 import type { z } from 'zod'
 import type { IpcChannel, IpcContract } from '../../shared/ipc/contract'
+import { NotFoundError, OptimisticLockError } from '../db/repo/base-repo'
+import { ReferencedError } from '../db/repo/reference-guard'
+import { LockedEntryError, ScheduleConflictError } from '../db/repo/schedule-template'
 import { err, ok, type Result } from '../../shared/result'
 import type { AppError } from '../../shared/result'
+
+/**
+ * Доменные ошибки раньше схлопывались в один INTERNAL_ERROR: renderer не мог отличить
+ * «кто-то успел изменить запись» от настоящего сбоя и не умел предложить перезагрузку,
+ * а нарушение внешнего ключа доходило до завуча английским текстом SQLite.
+ */
+function toAppError(e: unknown): AppError {
+  if (e instanceof OptimisticLockError) {
+    return { code: 'CONFLICT', message: 'Запись изменил кто-то другой — обновите данные и повторите' }
+  }
+  if (e instanceof NotFoundError) {
+    return { code: 'NOT_FOUND', message: e.message }
+  }
+  if (e instanceof ReferencedError || e instanceof LockedEntryError) {
+    return { code: 'BLOCKED', message: e.message }
+  }
+  if (e instanceof ScheduleConflictError) {
+    return { code: 'SCHEDULE_CONFLICT', message: e.message, details: e.reasons }
+  }
+
+  const message = e instanceof Error ? e.message : 'Неизвестная ошибка'
+  // better-sqlite3 отдаёт нарушения целостности по-английски: показывать их как есть нельзя.
+  if (/FOREIGN KEY constraint failed/i.test(message)) {
+    return { code: 'BLOCKED', message: 'Запись используется в других разделах — сначала удалите или перепривяжите связанные данные' }
+  }
+  if (/UNIQUE constraint failed/i.test(message)) {
+    return { code: 'BLOCKED', message: 'Такая запись уже есть — значение должно быть уникальным' }
+  }
+  if (/NOT NULL constraint failed/i.test(message)) {
+    return { code: 'VALIDATION_ERROR', message: 'Не заполнено обязательное поле' }
+  }
+  return { code: 'INTERNAL_ERROR', message }
+}
 
 export function handle<C extends IpcChannel>(
   channel: C,
@@ -24,7 +60,7 @@ export function handle<C extends IpcChannel>(
     try {
       return ok(await handler(parsed.data))
     } catch (e) {
-      return err<AppError>({ code: 'INTERNAL_ERROR', message: e instanceof Error ? e.message : 'Неизвестная ошибка' })
+      return err<AppError>(toAppError(e))
     }
   })
 }

@@ -179,8 +179,10 @@ export function ReferenceCrudPage<TRow extends { id: number; rowVersion: number 
               <button type="button" className="btn" onClick={closeDialog}>
                 {ruCommon.cancel}
               </button>
-              <button type="submit" className="btn btn-primary">
-                {ruCommon.save}
+              {/* Без блокировки двойной клик по «Сохранить» создавал две одинаковые записи:
+                  форма остаётся открытой на всё время запроса. */}
+              <button type="submit" className="btn btn-primary" disabled={form.formState.isSubmitting}>
+                {form.formState.isSubmitting ? 'Сохраняем…' : ruCommon.save}
               </button>
             </div>
           </div>

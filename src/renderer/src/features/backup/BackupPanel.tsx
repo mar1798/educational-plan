@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { BackupInfo } from '../../../../shared/ipc/contract'
 import { api } from '../../api/client'
+import { notifyError } from '../../ui/toast'
 
 const REASON_RU: Record<BackupInfo['reason'], string> = {
   schedule: 'при запуске',
@@ -59,11 +60,16 @@ export function BackupPanel() {
     await refresh()
   }
 
-  function restore(fileName: string) {
-    // Перед восстановлением main делает бэкап текущего состояния и перезапускает приложение,
-    // поэтому ответа на этот вызов не будет.
+  async function restore(fileName: string) {
+    // При успехе main перезапускает приложение и ответа не будет. А вот ошибка (файл бэкапа
+    // пропал, диск заполнен) возвращается обычным результатом — раньше он выбрасывался, и
+    // экран навсегда оставался с надписью «приложение сейчас перезапустится…».
     setMessage('Восстановление: приложение сейчас перезапустится…')
-    void api.invoke('backup:restore', { fileName })
+    const res = await api.invoke('backup:restore', { fileName })
+    if (!res.ok) {
+      setMessage(null)
+      notifyError(res.error.message)
+    }
   }
 
   return (
@@ -88,7 +94,7 @@ export function BackupPanel() {
               <>
                 {' '}
                 <strong>Заменить текущую базу этой копией?</strong>{' '}
-                <button onClick={() => restore(b.fileName)}>Да, восстановить</button>{' '}
+                <button onClick={() => void restore(b.fileName)}>Да, восстановить</button>{' '}
                 <button onClick={() => setPendingRestore(null)}>Отмена</button>
               </>
             ) : (

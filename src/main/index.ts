@@ -74,6 +74,20 @@ function reportFatal(error: unknown): void {
 }
 
 async function bootstrap() {
+  // Два экземпляра работают с одним файлом БД: оба прогоняют миграции, оба снимают
+  // автобэкап при старте и вытесняют друг у друга снимки из ротации, а записи расходятся
+  // между двумя открытыми соединениями. Второй запуск отдаёт фокус первому и выходит.
+  if (!app.requestSingleInstanceLock()) {
+    app.quit()
+    return
+  }
+  app.on('second-instance', () => {
+    const win = mainWindow
+    if (!win || win.isDestroyed()) return
+    if (win.isMinimized()) win.restore()
+    win.focus()
+  })
+
   await app.whenReady()
 
   applyContentSecurityPolicy()

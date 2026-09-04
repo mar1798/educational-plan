@@ -13,7 +13,10 @@ function cellText(cell: Cell): string {
 
 function cellNumber(cell: Cell): number | null {
   if (typeof cell === 'number') return cell
-  const text = cellText(cell).replace(',', '.')
+  // Excel в русской локали пишет часы как «1 234,5», причём разделителем разрядов бывает
+  // не только пробел, но и неразрывный (U+00A0) или узкий неразрывный (U+202F). Без их
+  // удаления Number() давал NaN, и часы молча пропадали из импорта как «пустая ячейка».
+  const text = cellText(cell).replace(/[\s\u00a0\u202f]/g, '').replace(',', '.')
   if (text === '') return null
   const n = Number(text)
   return Number.isFinite(n) ? n : null

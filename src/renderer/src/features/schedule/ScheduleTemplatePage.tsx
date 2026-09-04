@@ -1,5 +1,5 @@
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragOverEvent } from '@dnd-kit/core'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { Room, ScheduleTemplate, StudyGroup, Teacher, TemplateEntryView, UnassignedLoadRow } from '../../../../shared/ipc/contract'
 import { describeConflicts } from '../../../../shared/schedule/messages'
@@ -19,6 +19,10 @@ type CutKind = 'group' | 'teacher' | 'room'
 type ViewMode = 'week' | 'day'
 
 const WEEK_DAYS = [1, 2, 3, 4, 5, 6]
+
+// Стабильные ссылки: пустая сетка не должна пересоздавать зависимые useMemo на каждый рендер.
+const EMPTY_ENTRIES: TemplateEntryView[] = []
+const EMPTY_UNASSIGNED: UnassignedLoadRow[] = []
 
 function numberParam(raw: string | null): number | '' {
   const n = Number(raw)
@@ -48,8 +52,16 @@ export function ScheduleTemplatePage() {
 
   const [templates, setTemplates] = useState<ScheduleTemplate[]>([])
   const [templateId, setTemplateId] = useState<number | ''>(link.templateId)
-  const [entries, setEntries] = useState<TemplateEntryView[]>([])
-  const [unassigned, setUnassigned] = useState<UnassignedLoadRow[]>([])
+  // Данные хранятся вместе с версией шаблона, к которой относятся: пока ответ по новой версии
+  // не пришёл, сетка пустая, а не заполнена занятиями предыдущей — перетаскивание в этот
+  // момент правило бы не тот шаблон, что видно на экране.
+  const [loaded, setLoaded] = useState<{ templateId: number | ''; entries: TemplateEntryView[]; unassigned: UnassignedLoadRow[] }>({
+    templateId: '',
+    entries: [],
+    unassigned: [],
+  })
+  const entries = loaded.templateId === templateId ? loaded.entries : EMPTY_ENTRIES
+  const unassigned = loaded.templateId === templateId ? loaded.unassigned : EMPTY_UNASSIGNED
 
   const [groups, setGroups] = useState<StudyGroup[]>([])
   const [teachers, setTeachers] = useState<Teacher[]>([])
@@ -90,18 +102,26 @@ export function ScheduleTemplatePage() {
     })
   }, [selectedSemesterId])
 
+  // Запросы за версиями шаблона идут параллельно и возвращаются в произвольном порядке.
+  // Без сверки с текущей версией ответ по прежней перезаписывал сетку, и перетаскивание
+  // в этот момент правило не тот шаблон, что видно на экране.
+  const shownTemplateRef = useRef<number | ''>('')
+
   const refreshTemplateData = useCallback((id: number) => {
     void api.invoke('scheduleTemplates:entries', { templateId: id }).then((res) => {
-      if (res.ok) setEntries(res.value)
+      if (shownTemplateRef.current !== id) return
+      if (res.ok) setLoaded((prev) => ({ templateId: id, entries: res.value, unassigned: prev.templateId === id ? prev.unassigned : [] }))
       else notifyError(res.error.message)
     })
     void api.invoke('scheduleTemplates:unassignedLoad', { templateId: id }).then((res) => {
-      if (res.ok) setUnassigned(res.value)
+      if (shownTemplateRef.current !== id) return
+      if (res.ok) setLoaded((prev) => ({ templateId: id, entries: prev.templateId === id ? prev.entries : [], unassigned: res.value }))
       else notifyError(res.error.message)
     })
   }, [])
 
   useEffect(() => {
+    shownTemplateRef.current = templateId
     if (templateId === '') return
     refreshTemplateData(templateId)
   }, [templateId, refreshTemplateData])

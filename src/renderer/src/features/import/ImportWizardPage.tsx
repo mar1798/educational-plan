@@ -158,21 +158,27 @@ export function ImportWizardPage() {
   }, [grid, dataStartRow, dataEndRow])
 
   const inheritColumnIndexes = useMemo(() => columns.map((c, i) => (c.inherit ? i : -1)).filter((i) => i >= 0), [columns])
-  const inherited = useMemo(() => applyContextInheritance(rangedGrid, inheritColumnIndexes), [rangedGrid, inheritColumnIndexes])
+
+  // Строки «Итого» отсеиваются ДО наследования контекста: иначе значения контрольной строки
+  // запоминались как контекст и протекали в следующие строки данных (§3.8a/§3.8b).
   // `filterServiceRows` компилирует `new RegExp` — недописанный шаблон («итого|всего(») бросал
   // SyntaxError прямо в фазе рендера и уносил всё дерево вместе с настройками мастера.
   const serviceFilter = useMemo(() => {
     try {
-      return { ...filterServiceRows(inherited, servicePattern), patternError: null as string | null }
+      return { ...filterServiceRows(rangedGrid, servicePattern), patternError: null as string | null }
     } catch (error) {
       return {
-        dataRows: inherited,
+        dataRows: rangedGrid,
         controlRows: [] as Grid,
         patternError: error instanceof Error ? error.message : 'некорректное регулярное выражение',
       }
     }
-  }, [inherited, servicePattern])
-  const { dataRows, controlRows, patternError } = serviceFilter
+  }, [rangedGrid, servicePattern])
+  const { controlRows, patternError } = serviceFilter
+  const dataRows = useMemo(
+    () => applyContextInheritance(serviceFilter.dataRows, inheritColumnIndexes),
+    [serviceFilter, inheritColumnIndexes],
+  )
 
   const columnMapping = useMemo(() => columns.map((c, i) => ({ columnIndex: i, field: c.field })).filter((c) => c.field !== ''), [columns])
   const numericFieldColumns = useMemo(

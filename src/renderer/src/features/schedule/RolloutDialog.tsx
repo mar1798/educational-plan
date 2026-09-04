@@ -14,6 +14,8 @@ interface RolloutDialogProps {
   onApplied: () => void
 }
 
+const PREVIEW_LIMIT = 200
+
 /** Раскатка шаблона на диапазон дат (§4.8–4.10): сначала предпросмотр, применение — отдельным шагом. */
 export function RolloutDialog({ templateId, defaultDateFrom, defaultDateTo, onClose, onApplied }: RolloutDialogProps) {
   // Семестр на экране уже выбран, и раскатывают почти всегда его целиком — вводить те же
@@ -92,11 +94,20 @@ export function RolloutDialog({ templateId, defaultDateFrom, defaultDateTo, onCl
                 {expanded ? 'Скрыть список' : 'Показать список изменений'}
               </button>
               {expanded && (
-                <ul className="overlap-list">
-                  {preview.items.map((item, i) => (
-                    <li key={i}>{item.description}</li>
-                  ))}
-                </ul>
+                <>
+                  {/* Раскатка семестра даёт десятки тысяч изменений: разом отрисованный список
+                      вешал окно на минуты. Цифры выше и так дают полную картину. */}
+                  <ul className="overlap-list">
+                    {preview.items.slice(0, PREVIEW_LIMIT).map((item, i) => (
+                      <li key={i}>{item.description}</li>
+                    ))}
+                  </ul>
+                  {preview.items.length > PREVIEW_LIMIT && (
+                    <p className="history-empty">
+                      Показаны первые {PREVIEW_LIMIT} из {preview.items.length} изменений.
+                    </p>
+                  )}
+                </>
               )}
             </>
           )}

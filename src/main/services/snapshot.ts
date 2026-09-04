@@ -163,19 +163,29 @@ export function buildSolverInput(tx: DbLike, templateId: number, seed = Date.now
     const load = tx.select().from(teachingLoad).where(eq(teachingLoad.id, e.teachingLoadId)).get()
     if (!load) continue
     lockedCountByLoad.set(load.id, (lockedCountByLoad.get(load.id) ?? 0) + 1)
-    const unit = unitFromLoad(load, 'all', e.id * -1)
+    // Закреплённая запись занимает преподавателя и кабинет независимо от того, остались ли
+    // у неё слушатели: группу могли закрыть или объединить. Раньше такая запись выпадала из
+    // `fixed`, солвер считал слот свободным, `validateSolution` нарушения не видел — и через
+    // минуту расчёта applySolution падал на findConflicts с «сообщите разработчику».
+    const unit = unitFromLoad(load, 'all', e.id * -1, { allowEmptyAttendees: true })
     if (!unit) continue
     fixed.push({ ...unit, slot: slotIndex(e.dayOfWeek, e.pairNo), roomIdx: e.roomId != null ? roomIdxById.get(e.roomId) ?? null : null })
   }
 
-  function unitFromLoad(load: typeof teachingLoad.$inferSelect, parity: 'all' | 'odd' | 'even', id: number): Unit | null {
+  function unitFromLoad(
+    load: typeof teachingLoad.$inferSelect,
+    parity: 'all' | 'odd' | 'even',
+    id: number,
+    opts: { allowEmptyAttendees?: boolean } = {},
+  ): Unit | null {
     const row = tx.select().from(curriculumRow).where(eq(curriculumRow.id, load.curriculumRowId)).get()
     const disc = row ? tx.select().from(discipline).where(eq(discipline.id, row.disciplineId)).get() : undefined
     const teacherIdx = teacherIdxById.get(load.teacherId)
     if (teacherIdx == null) return null
     const attendees = attendeesFor(load.id)
-    // Ни одной активной группы у строки нагрузки — юнита нет (иначе занятие «ни для кого»).
-    if (attendees.length === 0) return null
+    // Ни одной активной группы у строки нагрузки — планировать нечего (занятие «ни для кого»).
+    // Для уже закреплённой записи это не повод её потерять: она всё равно держит слот.
+    if (attendees.length === 0 && !opts.allowEmptyAttendees) return null
     const students = attendees.reduce((sum, a) => {
       // memberMask — позиции 0-based; считаем биты через popcount на два слова.
       return sum + popcount32(a.memberMask[0]) + popcount32(a.memberMask[1])
