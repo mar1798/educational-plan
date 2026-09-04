@@ -17,6 +17,10 @@ export function EntryDialog({ entry, rooms, onClose, onChanged }: EntryDialogPro
   const [roomId, setRoomId] = useState<number | ''>(entry.roomId ?? '')
   const [weekParity, setWeekParity] = useState(entry.weekParity)
   const [saving, setSaving] = useState(false)
+  // «Убрать из шаблона» удаляет занятие безвозвратно и одним кликом — рядом с «Сохранить»
+  // это слишком легко нажать по ошибке. Подтверждение делается на месте: вложенный
+  // модальный диалог поверх этого закрывал бы фокус-ловушку внешнего.
+  const [confirmRemove, setConfirmRemove] = useState(false)
 
   async function save() {
     setSaving(true)
@@ -72,9 +76,20 @@ export function EntryDialog({ entry, rooms, onClose, onChanged }: EntryDialogPro
         </select>
       </div>
       <div className="dialog-actions-split">
-        <button type="button" className="btn btn-danger" disabled={saving} onClick={() => void remove()}>
-          Убрать из шаблона
-        </button>
+        {confirmRemove ? (
+          <div className="btn-group">
+            <button type="button" className="btn btn-danger" disabled={saving} onClick={() => void remove()}>
+              Да, убрать
+            </button>
+            <button type="button" className="btn" disabled={saving} onClick={() => setConfirmRemove(false)}>
+              {ruCommon.cancel}
+            </button>
+          </div>
+        ) : (
+          <button type="button" className="btn btn-danger" disabled={saving} onClick={() => setConfirmRemove(true)}>
+            Убрать из шаблона
+          </button>
+        )}
         <div className="btn-group">
           <button type="button" className="btn" onClick={onClose}>
             {ruCommon.cancel}

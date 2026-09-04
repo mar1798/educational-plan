@@ -18,6 +18,25 @@
   box-sizing: border-box;
 }
 
+/*
+ * До этого в приложении не было ни одного правила :focus — работать с клавиатуры было
+ * нельзя вслепую: ни на кнопках, ни в полях, ни в строках таблицы не было видно, где фокус.
+ * :focus-visible, а не :focus, чтобы обводка не появлялась после щелчка мышью.
+ */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* Системная обводка по умолчанию у полей ввода конфликтует с рамкой — заменяем на свою. */
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline-offset: 0;
+  border-color: var(--color-accent);
+}
+
 html,
 body,
 #root {
