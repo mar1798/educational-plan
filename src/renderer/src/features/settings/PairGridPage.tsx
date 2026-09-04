@@ -81,7 +81,7 @@ export function PairGridPage() {
   return (
     <div>
       <div className="page-header">
-        <h2>Сетка звонков</h2>
+        <h1>Сетка звонков</h1>
       </div>
       {drafts === null && <p className="history-empty">{ruCommon.loading}</p>}
       {drafts && (

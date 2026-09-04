@@ -3,6 +3,7 @@ import type { Curriculum, Speciality } from '../../../../shared/ipc/contract'
 import { api } from '../../api/client'
 import { Dialog } from '../../ui/Dialog'
 import { ruCommon } from '../../ui/locale'
+import { Select } from '../../ui/Select'
 
 interface CopyCurriculumDialogProps {
   source: Curriculum
@@ -35,13 +36,13 @@ export function CopyCurriculumDialog({ source, specialities, onClose, onCopied, 
     <Dialog open onOpenChange={(open) => !open && onClose()} title={`Копировать план «${source.name}»`}>
       <div className="form-field">
         <label htmlFor="copy-speciality">Специальность копии</label>
-        <select id="copy-speciality" value={specialityId} onChange={(e) => setSpecialityId(Number(e.target.value))}>
+        <Select id="copy-speciality" value={specialityId} onChange={(v) => setSpecialityId(Number(v))}>
           {specialities.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
       <div className="form-field">
         <label htmlFor="copy-year">Год набора</label>

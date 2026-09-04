@@ -74,38 +74,51 @@ export function BackupPanel() {
 
   return (
     <section>
-      <h2>Резервные копии</h2>
+      <h2 className="section-title">Резервные копии</h2>
 
-      <p>
-        Копия на внешний носитель:{' '}
-        {externalAt ? formatDate(externalAt) : 'ни разу не сохранялась'}
+      <p className={isStale ? 'backup-note backup-note-stale' : 'backup-note'}>
+        Копия на внешний носитель: {externalAt ? formatDate(externalAt) : 'ни разу не сохранялась'}
         {isStale && <strong> — прошло больше недели, сохраните копию на флешку</strong>}
       </p>
-      <button onClick={() => void saveExternal()}>Сохранить копию в выбранную папку</button>
-      <button onClick={() => void createManual()}>Создать бэкап</button>
 
-      {message && <p>{message}</p>}
+      <div className="btn-group">
+        <button type="button" className="btn btn-primary" onClick={() => void saveExternal()}>
+          Сохранить копию в выбранную папку
+        </button>
+        <button type="button" className="btn" onClick={() => void createManual()}>
+          Создать бэкап
+        </button>
+      </div>
 
-      <ul>
+      {message && <p className="backup-note">{message}</p>}
+
+      {/* Список — строки одинаковой ширины с колонками: раньше это был <ul> с маркерами,
+          и кнопка «Восстановить» у каждой копии стояла на своей случайной позиции. */}
+      <div className="backup-list">
+        {backups.length === 0 && <p className="history-empty">Копий пока нет</p>}
         {backups.map((b) => (
-          <li key={b.id}>
-            {formatDate(b.createdAt)} — {REASON_RU[b.reason]}, {formatSize(b.sizeBytes)}
+          <div className="backup-row" key={b.id}>
+            <span className="backup-date">{formatDate(b.createdAt)}</span>
+            <span className="badge">{REASON_RU[b.reason]}</span>
+            <span className="backup-size">{formatSize(b.sizeBytes)}</span>
             {pendingRestore === b.fileName ? (
-              <>
-                {' '}
-                <strong>Заменить текущую базу этой копией?</strong>{' '}
-                <button onClick={() => void restore(b.fileName)}>Да, восстановить</button>{' '}
-                <button onClick={() => setPendingRestore(null)}>Отмена</button>
-              </>
+              <span className="backup-confirm">
+                <strong>Заменить текущую базу этой копией?</strong>
+                <button type="button" className="btn btn-sm btn-danger" onClick={() => void restore(b.fileName)}>
+                  Да, восстановить
+                </button>
+                <button type="button" className="btn btn-sm" onClick={() => setPendingRestore(null)}>
+                  Отмена
+                </button>
+              </span>
             ) : (
-              <>
-                {' '}
-                <button onClick={() => setPendingRestore(b.fileName)}>Восстановить</button>
-              </>
+              <button type="button" className="btn btn-sm" onClick={() => setPendingRestore(b.fileName)}>
+                Восстановить
+              </button>
             )}
-          </li>
+          </div>
         ))}
-      </ul>
+      </div>
     </section>
   )
 }

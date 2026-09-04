@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Room, SubstituteCandidate, Teacher, TeacherLessonRow } from '../../../../shared/ipc/contract'
 import { api } from '../../api/client'
 import { notifyError, notifySuccess } from '../../ui/toast'
+import { Select } from '../../ui/Select'
 
 const STATUS_LABEL: Record<TeacherLessonRow['status'], string> = {
   planned: 'Запланировано',
@@ -165,24 +166,24 @@ function MovePanel({ lessonId, rooms, onDone, onCancel }: MovePanelProps) {
       </div>
       <div className="form-field">
         <label>Новая пара</label>
-        <select value={newPairNo} onChange={(e) => setNewPairNo(Number(e.target.value))}>
+        <Select value={newPairNo} onChange={(v) => setNewPairNo(Number(v))}>
           {[1, 2, 3, 4, 5, 6].map((p) => (
             <option key={p} value={p}>
               {p}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
       <div className="form-field">
         <label>Кабинет</label>
-        <select value={newRoomId} onChange={(e) => setNewRoomId(e.target.value === '' ? '' : Number(e.target.value))}>
+        <Select value={newRoomId} onChange={(v) => setNewRoomId(v === '' ? '' : Number(v))}>
           <option value="">Как было</option>
           {rooms.map((r) => (
             <option key={r.id} value={r.id}>
               {r.number}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
       <div className="form-field">
         <label>Причина переноса</label>
@@ -247,14 +248,14 @@ export function SubstitutionWizardPage() {
       <div className="page-header">
         <h1>Замены</h1>
         <div className="toolbar-actions">
-          <select value={teacherId} onChange={(e) => setTeacherId(e.target.value === '' ? '' : Number(e.target.value))}>
+          <Select value={teacherId} onChange={(v) => setTeacherId(v === '' ? '' : Number(v))}>
             <option value="">Преподаватель…</option>
             {teachers.map((t) => (
               <option key={t.id} value={t.id}>
                 {teacherFullName(t)}
               </option>
             ))}
-          </select>
+          </Select>
           <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
           <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
           <button type="button" className="btn btn-primary" onClick={() => void loadLessons()}>

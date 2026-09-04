@@ -15,6 +15,7 @@ import {
 import { api } from '../../api/client'
 import { useSemesterOptions } from '../load/useSemesterOptions'
 import { notifyError, notifySuccess } from '../../ui/toast'
+import { Select } from '../../ui/Select'
 
 const TARGET_LABEL: Record<TargetEntity, string> = {
   curriculum: 'Учебный план (строки)',
@@ -278,11 +279,11 @@ export function ImportWizardPage() {
           </div>
           <div className="form-field">
             <label htmlFor="target-entity">Куда импортировать</label>
-            <select
+            <Select
               id="target-entity"
               value={targetEntity}
-              onChange={(e) => {
-                setTargetEntity(e.target.value as TargetEntity)
+              onChange={(v) => {
+                setTargetEntity(v as TargetEntity)
                 setColumns((prev) => prev.map(() => ({ field: '', inherit: false })))
                 setProfileId('')
               }}
@@ -292,16 +293,16 @@ export function ImportWizardPage() {
                   {label}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           {profiles.length > 0 && (
             <div className="form-field">
               <label htmlFor="import-profile">Профиль сопоставления (§3.8d)</label>
-              <select
+              <Select
                 id="import-profile"
                 value={profileId}
-                onChange={(e) => {
-                  const id = e.target.value === '' ? '' : Number(e.target.value)
+                onChange={(v) => {
+                  const id = v === '' ? '' : Number(v)
                   setProfileId(id)
                   if (id !== '') applyProfile(id)
                 }}
@@ -312,7 +313,7 @@ export function ImportWizardPage() {
                     {p.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           )}
           <div className="dialog-actions">
@@ -419,10 +420,10 @@ export function ImportWizardPage() {
                   <th>Поле</th>
                   {Array.from({ length: columnCount }, (_, c) => (
                     <th key={c}>
-                      <select
+                      <Select
                         value={columns[c]?.field ?? ''}
-                        onChange={(e) =>
-                          setColumns((prev) => prev.map((col, i) => (i === c ? { ...col, field: e.target.value } : col)))
+                        onChange={(v) =>
+                          setColumns((prev) => prev.map((col, i) => (i === c ? { ...col, field: v } : col)))
                         }
                       >
                         <option value="">—</option>
@@ -431,7 +432,7 @@ export function ImportWizardPage() {
                             {f.labelRu}
                           </option>
                         ))}
-                      </select>
+                      </Select>
                     </th>
                   ))}
                 </tr>
@@ -507,22 +508,22 @@ export function ImportWizardPage() {
 
           <h4>Проверка расхождений (§3.8c, необязательно)</h4>
           <div className="btn-group">
-            <select value={discrepancyKeyCol} onChange={(e) => setDiscrepancyKeyCol(e.target.value === '' ? '' : Number(e.target.value))}>
+            <Select value={discrepancyKeyCol} onChange={(v) => setDiscrepancyKeyCol(v === '' ? '' : Number(v))}>
               <option value="">Ключевая колонка…</option>
               {Array.from({ length: columnCount }, (_, c) => (
                 <option key={c} value={c}>
                   Колонка {c + 1}
                 </option>
               ))}
-            </select>
-            <select value={discrepancyValueCol} onChange={(e) => setDiscrepancyValueCol(e.target.value === '' ? '' : Number(e.target.value))}>
+            </Select>
+            <Select value={discrepancyValueCol} onChange={(v) => setDiscrepancyValueCol(v === '' ? '' : Number(v))}>
               <option value="">Проверяемая колонка…</option>
               {Array.from({ length: columnCount }, (_, c) => (
                 <option key={c} value={c}>
                   Колонка {c + 1}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           {discrepancies.length === 0 && discrepancyKeyCol !== '' && discrepancyValueCol !== '' && (
             <p className="history-empty">Расхождений не найдено</p>
@@ -532,9 +533,9 @@ export function ImportWizardPage() {
               <span>
                 «{d.key}»: {d.values.map((v) => `${v.value} в ${v.count} строках`).join(', ')}
               </span>
-              <select
+              <Select
                 value={discrepancyResolutions[d.key] ?? ''}
-                onChange={(e) => setDiscrepancyResolutions((prev) => ({ ...prev, [d.key]: e.target.value }))}
+                onChange={(v) => setDiscrepancyResolutions((prev) => ({ ...prev, [d.key]: v }))}
               >
                 <option value="">Выбрать значение…</option>
                 {d.values.map((v) => (
@@ -542,7 +543,7 @@ export function ImportWizardPage() {
                     {v.value}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           ))}
           {unresolvedDiscrepancies.length > 0 && (
@@ -552,27 +553,27 @@ export function ImportWizardPage() {
           {targetEntity === 'curriculum' && (
             <div className="form-field">
               <label>Учебный план</label>
-              <select value={curriculumId} onChange={(e) => setCurriculumId(e.target.value === '' ? '' : Number(e.target.value))}>
+              <Select value={curriculumId} onChange={(v) => setCurriculumId(v === '' ? '' : Number(v))}>
                 <option value="">—</option>
                 {curricula.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           )}
           {targetEntity === 'teaching_load' && (
             <div className="form-field">
               <label>Семестр</label>
-              <select value={semesterId} onChange={(e) => setSemesterId(e.target.value === '' ? '' : Number(e.target.value))}>
+              <Select value={semesterId} onChange={(v) => setSemesterId(v === '' ? '' : Number(v))}>
                 <option value="">—</option>
                 {semesters.map((s) => (
                   <option key={s.id} value={s.id}>
                     {semesterLabel(s.id)}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           )}
           <div className="form-field">

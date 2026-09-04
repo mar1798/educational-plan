@@ -5,6 +5,7 @@ import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { notifyError, notifySuccess } from '../../ui/toast'
 import { CreateStreamDialog } from './CreateStreamDialog'
 import { useSemesterOptions } from './useSemesterOptions'
+import { Select } from '../../ui/Select'
 
 /**
  * Потоки (§3.5a): лекция читается сразу нескольким группам одной специальности и курса.
@@ -57,14 +58,14 @@ export function StreamsPage() {
       <div className="page-header">
         <h1>Потоки</h1>
         <div className="toolbar-actions">
-          <select value={selectedSemesterId} onChange={(e) => setSemesterId(e.target.value === '' ? '' : Number(e.target.value))}>
+          <Select value={selectedSemesterId} onChange={(v) => setSemesterId(v === '' ? '' : Number(v))}>
             <option value="">Выберите семестр</option>
             {semesters.map((s) => (
               <option key={s.id} value={s.id}>
                 {semesterLabel(s.id)}
               </option>
             ))}
-          </select>
+          </Select>
           <button type="button" className="btn btn-primary" disabled={selectedSemesterId === ''} onClick={() => setCreating(true)}>
             + Создать поток
           </button>

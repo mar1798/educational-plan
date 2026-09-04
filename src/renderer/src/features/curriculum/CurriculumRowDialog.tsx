@@ -3,6 +3,7 @@ import type { Curriculum, CurriculumRow, CurriculumRowEditPreview, Discipline } 
 import { api } from '../../api/client'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { Dialog } from '../../ui/Dialog'
+import { Select } from '../../ui/Select'
 import { ruCommon } from '../../ui/locale'
 import { notifyError, notifySuccess } from '../../ui/toast'
 import { CurriculumWeeksPanel } from './CurriculumWeeksPanel'
@@ -163,10 +164,10 @@ export function CurriculumRowDialog({ curriculum, row, disciplines, onClose, onS
       <Dialog open onOpenChange={(open) => !open && onClose()} title={row ? 'Строка учебного плана' : 'Новая строка учебного плана'}>
         <div className="form-field">
           <label htmlFor="row-discipline">Дисциплина</label>
-          <select
+          <Select
             id="row-discipline"
             value={form.disciplineId}
-            onChange={(e) => set('disciplineId', e.target.value === '' ? '' : Number(e.target.value))}
+            onChange={(v) => set('disciplineId', v === '' ? '' : Number(v))}
           >
             <option value="">—</option>
             {disciplines.map((d) => (
@@ -174,7 +175,7 @@ export function CurriculumRowDialog({ curriculum, row, disciplines, onClose, onS
                 {d.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div className="form-field">
           <label htmlFor="row-course">Курс</label>

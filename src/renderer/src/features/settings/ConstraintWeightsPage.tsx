@@ -71,7 +71,7 @@ export function ConstraintWeightsPage() {
   return (
     <div>
       <div className="page-header">
-        <h2>Веса мягких критериев</h2>
+        <h1>Веса мягких критериев</h1>
       </div>
       <p className="history-empty">
         Влияют только на качество расписания при локальном поиске (этап 6) — жёсткие ограничения (двойное занятие,
@@ -109,15 +109,17 @@ export function ConstraintWeightsPage() {
                       {d.descriptionRu && <div className="history-empty">{d.descriptionRu}</div>}
                     </td>
                     <td>
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        value={d.weight}
-                        disabled={!d.enabled}
-                        onChange={(e) => updateDraft(d.id, { weight: Number(e.target.value) })}
-                      />
-                      <span style={{ marginLeft: 8 }}>{d.weight}</span>
+                      <div className="weight-slider">
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          value={d.weight}
+                          disabled={!d.enabled}
+                          onChange={(e) => updateDraft(d.id, { weight: Number(e.target.value) })}
+                        />
+                        <span className="weight-value">{d.weight}</span>
+                      </div>
                     </td>
                     <td>
                       <input type="checkbox" checked={d.enabled} onChange={(e) => updateDraft(d.id, { enabled: e.target.checked })} />

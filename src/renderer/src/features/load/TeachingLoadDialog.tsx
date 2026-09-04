@@ -4,6 +4,7 @@ import { api } from '../../api/client'
 import { Dialog } from '../../ui/Dialog'
 import { ROOM_TYPE_LABEL, ruCommon } from '../../ui/locale'
 import { notifyError, notifySuccess, notifyWarning } from '../../ui/toast'
+import { Select } from '../../ui/Select'
 
 interface TeachingLoadDialogProps {
   semesterId: number
@@ -121,28 +122,28 @@ export function TeachingLoadDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()} title={row ? 'Строка нагрузки' : 'Новая строка нагрузки'}>
       <div className="form-field">
         <label htmlFor="load-target-type">Кому</label>
-        <select
+        <Select
           id="load-target-type"
           value={targetType}
-          onChange={(e) => {
-            setTargetType(e.target.value as 'group' | 'stream')
+          onChange={(v) => {
+            setTargetType(v as 'group' | 'stream')
             setSubgroupChoice('')
           }}
         >
           <option value="group">Группа</option>
           <option value="stream">Поток</option>
-        </select>
+        </Select>
       </div>
 
       {targetType === 'group' ? (
         <>
           <div className="form-field">
             <label htmlFor="load-group">Группа</label>
-            <select
+            <Select
               id="load-group"
               value={groupId}
-              onChange={(e) => {
-                setGroupId(e.target.value === '' ? '' : Number(e.target.value))
+              onChange={(v) => {
+                setGroupId(v === '' ? '' : Number(v))
                 setSubgroupChoice('')
               }}
             >
@@ -152,11 +153,11 @@ export function TeachingLoadDialog({
                   {g.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           <div className="form-field">
             <label htmlFor="load-subgroup">Подгруппа (§3.6)</label>
-            <select id="load-subgroup" value={subgroupChoice} onChange={(e) => setSubgroupChoice(e.target.value)}>
+            <Select id="load-subgroup" value={subgroupChoice} onChange={(v) => setSubgroupChoice(v)}>
               <option value="">Вся группа</option>
               {visibleSchemes.map((s) => (
                 <optgroup key={s.id} label={s.name}>
@@ -167,56 +168,56 @@ export function TeachingLoadDialog({
                   ))}
                 </optgroup>
               ))}
-            </select>
+            </Select>
           </div>
         </>
       ) : (
         <div className="form-field">
           <label htmlFor="load-stream">Поток</label>
-          <select id="load-stream" value={streamId} onChange={(e) => setStreamId(e.target.value === '' ? '' : Number(e.target.value))}>
+          <Select id="load-stream" value={streamId} onChange={(v) => setStreamId(v === '' ? '' : Number(v))}>
             <option value="">—</option>
             {streams.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       )}
 
       <div className="form-field">
         <label htmlFor="load-row">Дисциплина (строка плана)</label>
-        <select id="load-row" value={curriculumRowId} onChange={(e) => setCurriculumRowId(e.target.value === '' ? '' : Number(e.target.value))}>
+        <Select id="load-row" value={curriculumRowId} onChange={(v) => setCurriculumRowId(v === '' ? '' : Number(v))}>
           <option value="">—</option>
           {curriculumRows.map((r) => (
             <option key={r.id} value={r.id}>
               {disciplines.get(r.disciplineId)?.name ?? `#${r.disciplineId}`} — курс {r.course}, сем. {r.semesterNo}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <div className="form-field">
         <label htmlFor="load-teacher">Преподаватель</label>
-        <select id="load-teacher" value={teacherId} onChange={(e) => setTeacherId(e.target.value === '' ? '' : Number(e.target.value))}>
+        <Select id="load-teacher" value={teacherId} onChange={(v) => setTeacherId(v === '' ? '' : Number(v))}>
           <option value="">—</option>
           {teachers.map((t) => (
             <option key={t.id} value={t.id}>
               {t.lastName} {t.firstName}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <div className="form-field">
         <label htmlFor="load-kind">Вид занятия</label>
-        <select id="load-kind" value={lessonKind} onChange={(e) => setLessonKind(e.target.value as TeachingLoad['lessonKind'])}>
+        <Select id="load-kind" value={lessonKind} onChange={(v) => setLessonKind(v as TeachingLoad['lessonKind'])}>
           {Object.entries(KIND_LABEL).map(([value, label]) => (
             <option key={value} value={value}>
               {label}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <div className="form-field">
@@ -231,24 +232,24 @@ export function TeachingLoadDialog({
 
       <div className="form-field">
         <label htmlFor="load-clinical">Режим клинической базы (§3.6a)</label>
-        <select
+        <Select
           id="load-clinical"
           value={clinicalModeOverride ?? ''}
-          onChange={(e) => setClinicalModeOverride(e.target.value === '' ? null : (e.target.value as TeachingLoad['clinicalModeOverride']))}
+          onChange={(v) => setClinicalModeOverride(v === '' ? null : (v as TeachingLoad['clinicalModeOverride']))}
         >
           <option value="">По умолчанию (как у базы)</option>
           <option value="full_day">Весь день на базе</option>
           <option value="block">Блоком</option>
           <option value="free">Свободно</option>
-        </select>
+        </Select>
       </div>
 
       <div className="form-field">
         <label htmlFor="load-room-type">Требуемый тип кабинета</label>
-        <select
+        <Select
           id="load-room-type"
           value={roomTypeRequired ?? ''}
-          onChange={(e) => setRoomTypeRequired(e.target.value === '' ? null : (e.target.value as TeachingLoad['roomTypeRequired']))}
+          onChange={(v) => setRoomTypeRequired(v === '' ? null : (v as TeachingLoad['roomTypeRequired']))}
         >
           <option value="">Не важно</option>
           {Object.entries(ROOM_TYPE_LABEL).map(([value, label]) => (
@@ -256,7 +257,7 @@ export function TeachingLoadDialog({
               {label}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <div className="form-field">

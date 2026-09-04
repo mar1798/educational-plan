@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { GroupMergePreview, StudyGroup } from '../../../../shared/ipc/contract'
 import { api } from '../../api/client'
 import { Dialog } from '../../ui/Dialog'
+import { Select } from '../../ui/Select'
 import { ruCommon } from '../../ui/locale'
 import { notifyError, notifySuccess } from '../../ui/toast'
 
@@ -60,11 +61,11 @@ export function MergeGroupsDialog({ groups, onClose, onMerged }: MergeGroupsDial
     <Dialog open onOpenChange={(open) => !open && onClose()} title="Объединить группы">
       <div className="form-field">
         <label htmlFor="merge-source">Поглощаемая группа</label>
-        <select
+        <Select
           id="merge-source"
           value={sourceGroupId}
-          onChange={(e) => {
-            setSourceGroupId(e.target.value === '' ? '' : Number(e.target.value))
+          onChange={(v) => {
+            setSourceGroupId(v === '' ? '' : Number(v))
             resetPreview()
           }}
         >
@@ -74,15 +75,15 @@ export function MergeGroupsDialog({ groups, onClose, onMerged }: MergeGroupsDial
               {g.name}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
       <div className="form-field">
         <label htmlFor="merge-target">Целевая группа</label>
-        <select
+        <Select
           id="merge-target"
           value={targetGroupId}
-          onChange={(e) => {
-            setTargetGroupId(e.target.value === '' ? '' : Number(e.target.value))
+          onChange={(v) => {
+            setTargetGroupId(v === '' ? '' : Number(v))
             resetPreview()
           }}
         >
@@ -92,7 +93,7 @@ export function MergeGroupsDialog({ groups, onClose, onMerged }: MergeGroupsDial
               {g.name}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
       <div className="form-field">
         <label htmlFor="merge-date">Дата объединения</label>

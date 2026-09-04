@@ -3,6 +3,7 @@ import type { OtherLoad, Teacher } from '../../../../shared/ipc/contract'
 import { api } from '../../api/client'
 import { ruCommon } from '../../ui/locale'
 import { notifyError, notifySuccess } from '../../ui/toast'
+import { Select } from '../../ui/Select'
 
 interface OtherLoadPanelProps {
   semesterId: number
@@ -88,24 +89,24 @@ export function OtherLoadPanel({ semesterId }: OtherLoadPanelProps) {
       <div className="subpanel-add">
         <div className="form-field">
           <label>Преподаватель</label>
-          <select value={teacherId} onChange={(e) => setTeacherId(e.target.value === '' ? '' : Number(e.target.value))}>
+          <Select value={teacherId} onChange={(v) => setTeacherId(v === '' ? '' : Number(v))}>
             <option value="">—</option>
             {teachers.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.lastName} {t.firstName}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div className="form-field">
           <label>Вид</label>
-          <select value={kind} onChange={(e) => setKind(e.target.value as OtherLoad['kind'])}>
+          <Select value={kind} onChange={(v) => setKind(v as OtherLoad['kind'])}>
             {Object.entries(KIND_LABEL).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div className="form-field">
           <label>Часы</label>

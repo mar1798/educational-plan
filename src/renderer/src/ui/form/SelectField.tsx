@@ -1,4 +1,5 @@
 import { useController, type Control, type FieldPath, type FieldValues } from 'react-hook-form'
+import { Select } from '../Select'
 
 interface Option {
   value: string
@@ -29,18 +30,16 @@ export function SelectField<TValues extends FieldValues>({
   return (
     <div className="form-field">
       <label htmlFor={name}>{label}</label>
-      <select
+      <Select
         id={name}
         value={raw}
-        onChange={(e) => {
-          const v = e.target.value
+        onChange={(v) => {
           if (v === '') {
             field.onChange(null as never)
             return
           }
           field.onChange((valueType === 'number' ? Number(v) : v) as never)
         }}
-        onBlur={field.onBlur}
       >
         {nullable && <option value="">{nullLabel}</option>}
         {!nullable && raw === '' && <option value="">—</option>}
@@ -49,7 +48,7 @@ export function SelectField<TValues extends FieldValues>({
             {opt.label}
           </option>
         ))}
-      </select>
+      </Select>
       {fieldState.error && <p className="form-error">{fieldState.error.message}</p>}
     </div>
   )

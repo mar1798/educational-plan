@@ -14,6 +14,7 @@ import { RolloutDialog } from './RolloutDialog'
 import { ScheduleGrid } from './ScheduleGrid'
 import { UnassignedLoadPanel } from './UnassignedLoadPanel'
 import { cellId, parseCellId, type DragPayload } from './types'
+import { Select } from '../../ui/Select'
 
 type CutKind = 'group' | 'teacher' | 'room'
 type ViewMode = 'week' | 'day'
@@ -297,22 +298,22 @@ export function ScheduleTemplatePage() {
       <div className="page-header">
         <h1>Шаблон недели</h1>
         <div className="toolbar-actions">
-          <select value={selectedSemesterId} onChange={(e) => setSemesterId(e.target.value === '' ? '' : Number(e.target.value))}>
+          <Select value={selectedSemesterId} onChange={(v) => setSemesterId(v === '' ? '' : Number(v))}>
             <option value="">Выберите семестр</option>
             {semesters.map((s) => (
               <option key={s.id} value={s.id}>
                 {semesterLabel(s.id)}
               </option>
             ))}
-          </select>
-          <select value={templateId} onChange={(e) => setTemplateId(e.target.value === '' ? '' : Number(e.target.value))}>
+          </Select>
+          <Select value={templateId} onChange={(v) => setTemplateId(v === '' ? '' : Number(v))}>
             <option value="">Версия шаблона…</option>
             {templates.map((t) => (
               <option key={t.id} value={t.id}>
                 v{t.versionNo} с {t.effectiveFrom} ({t.status})
               </option>
             ))}
-          </select>
+          </Select>
           <button type="button" className="btn" disabled={selectedSemesterId === ''} onClick={() => setShowNewVersion(true)}>
             + Новая версия
           </button>
@@ -332,37 +333,37 @@ export function ScheduleTemplatePage() {
       ) : (
         <>
           <div className="toolbar-actions" style={{ marginBottom: 12 }}>
-            <select
+            <Select
               value={cutKind}
-              onChange={(e) => {
-                setCutKind(e.target.value as CutKind)
+              onChange={(v) => {
+                setCutKind(v as CutKind)
                 setCutTargetId('')
               }}
             >
               <option value="group">По группе</option>
               <option value="teacher">По преподавателю</option>
               <option value="room">По кабинету</option>
-            </select>
-            <select value={cutTargetId} onChange={(e) => setCutTargetId(e.target.value === '' ? '' : Number(e.target.value))}>
+            </Select>
+            <Select value={cutTargetId} onChange={(v) => setCutTargetId(v === '' ? '' : Number(v))}>
               <option value="">Все</option>
               {cutOptions.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.label}
                 </option>
               ))}
-            </select>
-            <select value={viewMode} onChange={(e) => setViewMode(e.target.value as ViewMode)}>
+            </Select>
+            <Select value={viewMode} onChange={(v) => setViewMode(v as ViewMode)}>
               <option value="week">Неделя</option>
               <option value="day">День</option>
-            </select>
+            </Select>
             {viewMode === 'day' && (
-              <select value={viewDay} onChange={(e) => setViewDay(Number(e.target.value))}>
+              <Select value={viewDay} onChange={(v) => setViewDay(Number(v))}>
                 {WEEK_DAYS.map((d) => (
                   <option key={d} value={d}>
                     {WEEKDAY_LABEL[d]}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
             <button type="button" className="btn" onClick={() => void handleExportExcel('group')} disabled={cutKind !== 'group' || cutTargetId === ''}>
               Excel: группа

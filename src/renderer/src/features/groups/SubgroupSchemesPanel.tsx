@@ -5,6 +5,7 @@ import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { EntityHistoryPanel } from '../../ui/EntityHistoryPanel'
 import { ruCommon } from '../../ui/locale'
 import { notifyError, notifySuccess } from '../../ui/toast'
+import { Select } from '../../ui/Select'
 
 interface SubgroupSchemesPanelProps {
   group: StudyGroup
@@ -281,14 +282,14 @@ export function SubgroupSchemesPanel({ group }: SubgroupSchemesPanelProps) {
       <div className="subpanel-add">
         <div className="form-field">
           <label>Семестр</label>
-          <select value={semesterId} onChange={(e) => setSemesterId(e.target.value === '' ? '' : Number(e.target.value))}>
+          <Select value={semesterId} onChange={(v) => setSemesterId(v === '' ? '' : Number(v))}>
             <option value="">—</option>
             {semesters.map((s) => (
               <option key={s.id} value={s.id}>
                 {semesterLabel(s.id)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div className="form-field">
           <label>Название схемы</label>
@@ -296,10 +297,10 @@ export function SubgroupSchemesPanel({ group }: SubgroupSchemesPanelProps) {
         </div>
         <div className="form-field">
           <label>Разделить на</label>
-          <select value={partsCount} onChange={(e) => setPartsCount(Number(e.target.value) as 2 | 3)}>
+          <Select value={partsCount} onChange={(v) => setPartsCount(Number(v) as 2 | 3)}>
             <option value={2}>2</option>
             <option value={3}>3</option>
-          </select>
+          </Select>
         </div>
         <div className="form-field form-field-checkbox">
           <input id="scheme-default" type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} />

@@ -3,6 +3,7 @@ import type { Discipline, TeacherQualification } from '../../../../shared/ipc/co
 import { api } from '../../api/client'
 import { ruCommon } from '../../ui/locale'
 import { notifyError, notifySuccess, notifyWarning } from '../../ui/toast'
+import { Select } from '../../ui/Select'
 
 interface TeacherQualificationsPanelProps {
   teacherId: number
@@ -93,14 +94,14 @@ export function TeacherQualificationsPanel({ teacherId }: TeacherQualificationsP
       <div className="subpanel-add">
         <div className="form-field">
           <label>Дисциплина</label>
-          <select value={disciplineId} onChange={(e) => setDisciplineId(e.target.value)}>
+          <Select value={disciplineId} onChange={(v) => setDisciplineId(v)}>
             <option value="">—</option>
             {disciplines.map((d) => (
               <option key={d.id} value={d.id}>
                 {d.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div className="form-field">
           <label>С даты</label>

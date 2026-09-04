@@ -3,6 +3,7 @@ import type { ScheduleTemplate } from '../../../../shared/ipc/contract'
 import { api } from '../../api/client'
 import { notifyError, notifySuccess } from '../../ui/toast'
 import { useSemesterOptions } from '../load/useSemesterOptions'
+import { Select } from '../../ui/Select'
 
 /** Отчёт «Сводное расписание колледжа» (§этап 7): тонкая обёртка над уже готовыми export:excel/export:pdf. */
 export function ReportSummarySchedulePage() {
@@ -41,22 +42,22 @@ export function ReportSummarySchedulePage() {
       <div className="page-header">
         <h1>Сводное расписание колледжа</h1>
         <div className="toolbar-actions">
-          <select value={selectedSemesterId} onChange={(e) => setSemesterId(e.target.value === '' ? '' : Number(e.target.value))}>
+          <Select value={selectedSemesterId} onChange={(v) => setSemesterId(v === '' ? '' : Number(v))}>
             <option value="">Выберите семестр</option>
             {semesters.map((s) => (
               <option key={s.id} value={s.id}>
                 {semesterLabel(s.id)}
               </option>
             ))}
-          </select>
-          <select value={selectedTemplateId} onChange={(e) => setTemplateId(e.target.value === '' ? '' : Number(e.target.value))}>
+          </Select>
+          <Select value={selectedTemplateId} onChange={(v) => setTemplateId(v === '' ? '' : Number(v))}>
             <option value="">Версия шаблона…</option>
             {templates.map((t) => (
               <option key={t.id} value={t.id}>
                 v{t.versionNo} {t.status === 'active' ? '(активна)' : ''} — с {t.effectiveFrom}
               </option>
             ))}
-          </select>
+          </Select>
           <button type="button" className="btn" onClick={() => void exportExcel()}>
             Экспорт в Excel (по группам)
           </button>

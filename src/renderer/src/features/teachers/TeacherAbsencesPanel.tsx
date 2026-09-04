@@ -3,6 +3,7 @@ import type { TeacherAbsence } from '../../../../shared/ipc/contract'
 import { api } from '../../api/client'
 import { ruCommon, WEEKDAY_LABEL } from '../../ui/locale'
 import { notifyError, notifySuccess } from '../../ui/toast'
+import { Select } from '../../ui/Select'
 
 interface TeacherAbsencesPanelProps {
   teacherId: number
@@ -110,28 +111,28 @@ export function TeacherAbsencesPanel({ teacherId }: TeacherAbsencesPanelProps) {
       <div className="subpanel-add">
         <div className="form-field">
           <label>Тип</label>
-          <select value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value as TeacherAbsence['kind'] })}>
+          <Select value={draft.kind} onChange={(v) => setDraft({ ...draft, kind: v as TeacherAbsence['kind'] })}>
             <option value="hard">Нельзя ставить</option>
             <option value="soft">Нежелательно</option>
-          </select>
+          </Select>
         </div>
         <div className="form-field">
           <label>Когда</label>
-          <select value={draft.scope} onChange={(e) => setDraft({ ...draft, scope: e.target.value as TeacherAbsence['scope'] })}>
+          <Select value={draft.scope} onChange={(v) => setDraft({ ...draft, scope: v as TeacherAbsence['scope'] })}>
             <option value="weekday">По дню недели</option>
             <option value="date_range">Период дат</option>
-          </select>
+          </Select>
         </div>
         {draft.scope === 'weekday' ? (
           <div className="form-field">
             <label>День недели</label>
-            <select value={draft.dayOfWeek} onChange={(e) => setDraft({ ...draft, dayOfWeek: e.target.value })}>
+            <Select value={draft.dayOfWeek} onChange={(v) => setDraft({ ...draft, dayOfWeek: v })}>
               {Object.entries(WEEKDAY_LABEL).map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         ) : (
           <>

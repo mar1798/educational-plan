@@ -8,6 +8,7 @@ import { ruCommon } from '../../ui/locale'
 import { notifyError, notifySuccess } from '../../ui/toast'
 import { TeachingLoadDialog } from './TeachingLoadDialog'
 import { useSemesterOptions } from './useSemesterOptions'
+import { Select } from '../../ui/Select'
 
 const KIND_LABEL: Record<TeachingLoad['lessonKind'], string> = {
   theory: 'Теория',
@@ -99,14 +100,14 @@ export function LoadEditorPage() {
       <div className="page-header">
         <h1>Нагрузка</h1>
         <div className="toolbar-actions">
-          <select value={selectedSemesterId} onChange={(e) => setSemesterId(e.target.value === '' ? '' : Number(e.target.value))}>
+          <Select value={selectedSemesterId} onChange={(v) => setSemesterId(v === '' ? '' : Number(v))}>
             <option value="">Выберите семестр</option>
             {semesters.map((s) => (
               <option key={s.id} value={s.id}>
                 {semesterLabel(s.id)}
               </option>
             ))}
-          </select>
+          </Select>
           <button type="button" className="btn btn-primary" disabled={selectedSemesterId === ''} onClick={() => setEditingRow('new')}>
             + Добавить нагрузку
           </button>

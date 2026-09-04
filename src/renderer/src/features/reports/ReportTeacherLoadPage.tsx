@@ -5,6 +5,7 @@ import { api } from '../../api/client'
 import { DataTable } from '../../ui/DataTable'
 import { notifyError, notifySuccess } from '../../ui/toast'
 import { useSemesterOptions } from '../load/useSemesterOptions'
+import { Select } from '../../ui/Select'
 
 const columns: ColumnDef<TeacherLoadReportRow>[] = [
   { accessorKey: 'teacherName', header: 'Преподаватель' },
@@ -61,14 +62,14 @@ export function ReportTeacherLoadPage() {
       <div className="page-header">
         <h1>Выполнение нагрузки</h1>
         <div className="toolbar-actions">
-          <select value={selectedYearId} onChange={(e) => setAcademicYearId(e.target.value === '' ? '' : Number(e.target.value))}>
+          <Select value={selectedYearId} onChange={(v) => setAcademicYearId(v === '' ? '' : Number(v))}>
             <option value="">Выберите учебный год</option>
             {academicYears.map((y) => (
               <option key={y.id} value={y.id}>
                 {y.name}
               </option>
             ))}
-          </select>
+          </Select>
           <button type="button" className="btn" onClick={() => void exportExcel()}>
             Экспорт в Excel
           </button>

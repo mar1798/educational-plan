@@ -4,6 +4,7 @@ import { api } from '../../api/client'
 import { Dialog } from '../../ui/Dialog'
 import { ruCommon } from '../../ui/locale'
 import { notifyError, notifySuccess } from '../../ui/toast'
+import { Select } from '../../ui/Select'
 
 interface EntryDialogProps {
   entry: TemplateEntryView
@@ -57,7 +58,7 @@ export function EntryDialog({ entry, rooms, onClose, onChanged }: EntryDialogPro
     <Dialog open onOpenChange={(next) => !next && onClose()} title={entry.disciplineName} description={`${entry.teacherName} · ${entry.targetLabel}`}>
       <div className="form-field">
         <label htmlFor="entry-room">Кабинет</label>
-        <select id="entry-room" value={roomId} onChange={(e) => setRoomId(e.target.value === '' ? '' : Number(e.target.value))}>
+        <Select id="entry-room" value={roomId} onChange={(v) => setRoomId(v === '' ? '' : Number(v))}>
           <option value="">Не назначен</option>
           {rooms.map((r) => (
             <option key={r.id} value={r.id}>
@@ -65,15 +66,15 @@ export function EntryDialog({ entry, rooms, onClose, onChanged }: EntryDialogPro
               {r.name ? ` (${r.name})` : ''}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
       <div className="form-field">
         <label htmlFor="entry-parity">Чётность недели</label>
-        <select id="entry-parity" value={weekParity} onChange={(e) => setWeekParity(e.target.value as TemplateEntryView['weekParity'])}>
+        <Select id="entry-parity" value={weekParity} onChange={(v) => setWeekParity(v as TemplateEntryView['weekParity'])}>
           <option value="all">Каждую неделю</option>
           <option value="odd">Через неделю — нечётная</option>
           <option value="even">Через неделю — чётная</option>
-        </select>
+        </Select>
       </div>
       <div className="dialog-actions-split">
         {confirmRemove ? (

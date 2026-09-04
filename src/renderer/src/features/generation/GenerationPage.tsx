@@ -7,6 +7,7 @@ import type { SolverInput, SolverOutput, SolverProgress, Unit } from '../../../.
 import { api } from '../../api/client'
 import { notifyError, notifySuccess } from '../../ui/toast'
 import { useSemesterOptions } from '../load/useSemesterOptions'
+import { Select } from '../../ui/Select'
 
 const PHASE_LABEL: Record<SolverProgress['phase'], string> = {
   greedy: 'Жадная расстановка',
@@ -200,23 +201,23 @@ export function GenerationPage() {
         <div className="toolbar-actions">
           <label>
             Семестр
-            <select value={selectedSemesterId} onChange={(e) => setSemesterId(Number(e.target.value))} disabled={generating}>
+            <Select value={selectedSemesterId} onChange={(v) => setSemesterId(Number(v))} disabled={generating}>
               {semesters.map((s) => (
                 <option key={s.id} value={s.id}>
                   {semesterLabel(s.id)}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           <label>
             Версия шаблона
-            <select value={templateId} onChange={(e) => setTemplateId(Number(e.target.value))} disabled={generating}>
+            <Select value={templateId} onChange={(v) => setTemplateId(Number(v))} disabled={generating}>
               {templates.map((t) => (
                 <option key={t.id} value={t.id}>
                   v{t.versionNo} · {t.status}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           {!generating && draft == null && (
             <button type="button" className="btn btn-primary" onClick={() => void handleStart()} disabled={templateId === ''}>

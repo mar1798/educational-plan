@@ -4,6 +4,7 @@ import { api } from '../../api/client'
 import { EntityHistoryPanel } from '../../ui/EntityHistoryPanel'
 import { WEEKDAY_SHORT, ruCommon } from '../../ui/locale'
 import { notifyError, notifySuccess } from '../../ui/toast'
+import { Select } from '../../ui/Select'
 
 const KIND_LABEL: Record<CalendarDay['kind'], string> = {
   study: 'Учебный день',
@@ -175,15 +176,15 @@ export function CalendarYearPage() {
   return (
     <div>
       <div className="page-header">
-        <h2>Календарь</h2>
+        <h1>Календарь года</h1>
         <div className="toolbar-actions">
-          <select value={yearId} onChange={(e) => setYearId(e.target.value === '' ? '' : Number(e.target.value))}>
+          <Select value={yearId} onChange={(v) => setYearId(v === '' ? '' : Number(v))}>
             {years.map((y) => (
               <option key={y.id} value={y.id}>
                 {y.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       </div>
 
@@ -196,6 +197,15 @@ export function CalendarYearPage() {
           ))}
         </div>
       )}
+
+      <div className="calendar-legend">
+        {(Object.keys(KIND_LABEL) as CalendarDay['kind'][]).map((kind) => (
+          <span key={kind}>
+            <i className={`day-cell ${KIND_CLASS[kind]}`} />
+            {KIND_LABEL[kind]}
+          </span>
+        ))}
+      </div>
 
       {!year && <p className="history-empty">Сначала заведите учебный год на странице «Учебные годы»</p>}
 
@@ -258,13 +268,13 @@ export function CalendarYearPage() {
             <>
               <div className="form-field">
                 <label>Тип дня</label>
-                <select value={detailKind} onChange={(e) => setDetailKind(e.target.value as CalendarDay['kind'])}>
+                <Select value={detailKind} onChange={(v) => setDetailKind(v as CalendarDay['kind'])}>
                   {Object.entries(KIND_LABEL).map(([value, label]) => (
                     <option key={value} value={value}>
                       {label}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
               {detailKind === 'moved_workday' && (
                 <div className="form-field">

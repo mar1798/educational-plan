@@ -6,6 +6,7 @@ import { DataTable } from '../../ui/DataTable'
 import { notifyError } from '../../ui/toast'
 import { OtherLoadPanel } from './OtherLoadPanel'
 import { useSemesterOptions } from './useSemesterOptions'
+import { Select } from '../../ui/Select'
 
 const groupColumns: ColumnDef<GroupBalanceRow>[] = [
   { accessorKey: 'groupName', header: 'Группа' },
@@ -83,14 +84,14 @@ export function LoadBalancePage() {
       <div className="page-header">
         <h1>Баланс нагрузки</h1>
         <div className="toolbar-actions">
-          <select value={selectedSemesterId} onChange={(e) => setSemesterId(e.target.value === '' ? '' : Number(e.target.value))}>
+          <Select value={selectedSemesterId} onChange={(v) => setSemesterId(v === '' ? '' : Number(v))}>
             <option value="">Выберите семестр</option>
             {semesters.map((s) => (
               <option key={s.id} value={s.id}>
                 {semesterLabel(s.id)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       </div>
 

@@ -11,6 +11,9 @@
   --color-success: #16a34a;
   --sidebar-width: 240px;
   --radius: 6px;
+  /* Одна высота для кнопок, полей и списков выбора: до этого в одной строке тулбара
+     соседствовали нативный select 21 px, поле даты 26 px и кнопка 36 px. */
+  --control-height: 34px;
   --shadow: 0 2px 8px rgba(16, 24, 40, 0.08);
 }
 
@@ -116,6 +119,9 @@ h3 {
   color: var(--color-text);
   text-decoration: none;
   border-left: 3px solid transparent;
+  /* Насыщенность одна и та же во всех состояниях: при `font-weight: 600` у активного
+     пункта глифы становились шире и подпись заметно дёргалась в момент перехода. */
+  font-weight: 500;
 }
 
 .app-nav-link:hover {
@@ -126,7 +132,6 @@ h3 {
   background: #eef2ff;
   border-left-color: var(--color-accent);
   color: var(--color-accent);
-  font-weight: 600;
 }
 
 .app-content {
@@ -140,8 +145,12 @@ h3 {
 .btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  padding: 7px 14px;
+  /* min-height, а не height: длинная подпись («Сгенерировать дни: 1-й семестр …») должна
+     переносить строку, а не обрезаться по фиксированной высоте. */
+  min-height: var(--control-height);
+  padding: 4px 14px;
   border-radius: var(--radius);
   border: 1px solid var(--color-border);
   background: var(--color-surface);
@@ -182,7 +191,15 @@ h3 {
   border: none;
   background: none;
   color: var(--color-accent);
+  min-height: 0;
   padding: 4px 6px;
+}
+
+/* Компактная кнопка для строк таблиц и подпанелей, где 34 px разрывают строку. */
+.btn-sm {
+  min-height: 28px;
+  padding: 2px 10px;
+  font-size: 13px;
 }
 
 /* Страница справочника */
@@ -193,6 +210,18 @@ h3 {
   justify-content: space-between;
   margin-bottom: 16px;
   gap: 12px;
+  /* Тулбар справа переносится на свою строку, а не выдавливает заголовок. */
+  flex-wrap: wrap;
+}
+
+/* Один размер заголовка на всех страницах: браузерные 2em (28 px) при базовых 14 px
+   выглядели непропорционально, а часть страниц вообще начиналась с h2 в 21 px. */
+.page-header h1,
+.page-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+  line-height: 1.2;
 }
 
 .toolbar-actions {
@@ -221,11 +250,49 @@ h3 {
 }
 
 .search-input {
-  padding: 7px 10px;
+  height: var(--control-height);
+  padding: 0 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   min-width: 260px;
   background: var(--color-surface);
+}
+
+/* Поля дат, времени и чисел встречаются в тулбарах и таблицах вне `.form-field`
+   (конфликты, замены, отчёты, сетка звонков) — без этого они оставались нативными
+   26-пиксельными и ломали строку рядом с кнопками. */
+input[type='text'],
+input[type='number'],
+input[type='date'],
+input[type='time'],
+textarea {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: 0 8px;
+  height: var(--control-height);
+}
+
+textarea {
+  height: auto;
+  padding: 6px 8px;
+}
+
+input[type='range'] {
+  accent-color: var(--color-accent);
+  height: var(--control-height);
+}
+
+input[type='checkbox'] {
+  accent-color: var(--color-accent);
+  width: 15px;
+  height: 15px;
+}
+
+input:disabled,
+textarea:disabled {
+  background: var(--color-bg);
+  color: var(--color-text-muted);
 }
 
 /* Таблица */
@@ -363,6 +430,9 @@ table.data-table {
 
 .form-field {
   margin-bottom: 14px;
+  /* На широких карточках поле растягивалось на всю страницу (на «Импорте» — 1094 px):
+     читать и целиться в такое поле неудобно, а список выбора раскрывался во всю ширину. */
+  max-width: 480px;
 }
 
 .form-field label {
@@ -375,12 +445,10 @@ table.data-table {
 .form-field input[type='text'],
 .form-field input[type='number'],
 .form-field input[type='date'],
-.form-field select {
+.form-field input[type='time'] {
   width: 100%;
-  padding: 7px 10px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-surface);
+  padding: 0 10px;
+  height: var(--control-height);
 }
 
 .form-field-checkbox {
@@ -490,7 +558,16 @@ table.data-table {
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   padding: 20px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
+}
+
+/* Браузерные отступы у <p> добавляли карточке пустую полосу сверху и снизу. */
+.card > p:first-of-type {
+  margin-top: 0;
+}
+
+.card > p:last-child {
+  margin-bottom: 0;
 }
 
 /* Схемы деления на подгруппы и проверка совместимости (§2.5, §2.6). */
@@ -660,6 +737,32 @@ table.data-table {
   box-shadow: 0 0 0 2px var(--color-accent);
 }
 
+/* Легенда к цветам календаря: без неё красный и синий дни ничего не сообщали. */
+
+.calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.calendar-legend span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.calendar-legend i {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  /* Рамка нужна учебному дню: его фон совпадает с фоном страницы, без неё образец пропадал. */
+  border: 1px solid var(--color-border);
+}
+
 /* Шаблон расписания: сетка 6×6 и drag-and-drop (§4.2–4.7). */
 
 .schedule-layout {
@@ -745,6 +848,8 @@ table.data-table {
 
 .schedule-chip-title {
   font-weight: 600;
+  /* Место под кнопку замка в правом верхнем углу: длинные названия заезжали под неё. */
+  padding-right: 12px;
 }
 
 .schedule-chip-sub {
@@ -792,8 +897,16 @@ table.data-table {
   font-size: 11px;
 }
 
+/* Кнопка «праздник» есть у каждого из 279 дней года: постоянно видимая, она превращала
+   сетку в поле из значков. Показываем её при наведении и по фокусу с клавиатуры. */
+.day-cell:hover .day-cell-holiday-toggle,
+.day-cell-holiday-toggle:focus-visible {
+  opacity: 1;
+}
+
 .day-cell-holiday-toggle {
   position: absolute;
+  opacity: 0;
   top: -4px;
   right: -4px;
   width: 14px;
@@ -873,4 +986,206 @@ table.data-table {
   color: var(--color-danger);
   text-transform: uppercase;
   letter-spacing: 0.03em;
+}
+
+/* Кастомный список выбора (ui/Select.tsx).
+   Нативный <select> в Electron рисуется системой: он игнорировал высоту соседних кнопок
+   (21 px против 36 px) и раскрывался меню во всю высоту экрана на списках из 140 позиций. */
+
+.select-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: var(--control-height);
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  /* Ширина по содержимому, но в разумных рамках: иначе поле «прыгало» бы от выбора
+     к выбору, а на длинных ФИО занимало бы полтулбара. */
+  min-width: 140px;
+  max-width: 280px;
+}
+
+.select-trigger:hover:not(:disabled) {
+  border-color: #c3c9d2;
+}
+
+.select-trigger-open {
+  border-color: var(--color-accent);
+}
+
+.select-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.select-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.select-value-empty {
+  color: var(--color-text-muted);
+}
+
+/* Треугольник рисуется рамками, чтобы не тащить иконочный шрифт ради одного глифа. */
+.select-caret {
+  flex-shrink: 0;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--color-text-muted);
+}
+
+.select-menu {
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(16, 24, 40, 0.16);
+}
+
+.select-search {
+  padding: 6px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.select-search input {
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface);
+}
+
+.select-list {
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.select-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.select-option-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.select-option-active {
+  background: var(--color-bg);
+}
+
+.select-option-selected {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.select-option-selected.select-option-active {
+  background: #eef2ff;
+}
+
+.select-option-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.select-empty {
+  padding: 10px 8px;
+  color: var(--color-text-muted);
+}
+
+/* В форме поле занимает всю ширину строки, как обычный input. */
+.form-field .select-trigger,
+.subpanel-add .select-trigger {
+  display: flex;
+  width: 100%;
+  max-width: none;
+}
+
+/* Резервные копии (§1.7): список одинаковых строк вместо маркированного <ul>,
+   где кнопка «Восстановить» вставала на своё место в каждой строке. */
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.backup-note {
+  color: var(--color-text-muted);
+  margin: 0 0 12px;
+}
+
+.backup-note-stale {
+  color: var(--color-text);
+}
+
+.backup-list {
+  margin-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+.backup-row {
+  display: grid;
+  grid-template-columns: 190px 150px 80px 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 13px;
+}
+
+.backup-row .badge,
+.backup-row > .btn {
+  justify-self: start;
+}
+
+.backup-size {
+  color: var(--color-text-muted);
+  text-align: right;
+}
+
+.backup-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Веса критериев (§5.4): ползунок и число в одной строке — число переносилось под ползунок
+   и «отрывалось» от своего критерия. */
+
+.weight-slider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.weight-slider input[type='range'] {
+  flex: 1;
+  min-width: 120px;
+}
+
+.weight-value {
+  width: 28px;
+  flex-shrink: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
