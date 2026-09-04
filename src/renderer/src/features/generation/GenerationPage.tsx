@@ -7,7 +7,8 @@ import type { SolverInput, SolverOutput, SolverProgress, Unit } from '../../../.
 import { api } from '../../api/client'
 import { notifyError, notifySuccess } from '../../ui/toast'
 import { useSemesterOptions } from '../load/useSemesterOptions'
-import { Select } from '../../ui/Select'
+import { FilterSelect } from '../../ui/FilterSelect'
+import { useInitialSelection } from '../../ui/useInitialSelection'
 
 const PHASE_LABEL: Record<SolverProgress['phase'], string> = {
   greedy: 'Жадная расстановка',
@@ -40,7 +41,8 @@ function breakdownRows(output: SolverOutput, input: SolverInput): BreakdownRow[]
 export function GenerationPage() {
   const { semesters, label: semesterLabel } = useSemesterOptions()
   const [semesterId, setSemesterId] = useState<number | ''>('')
-  const selectedSemesterId = semesterId !== '' ? semesterId : (semesters[0]?.id ?? '')
+  useInitialSelection(semesters, semesterId !== '', (list) => setSemesterId(list[0]!.id))
+  const selectedSemesterId = semesterId
 
   const [templates, setTemplates] = useState<ScheduleTemplate[]>([])
   const [templateId, setTemplateId] = useState<number | ''>('')
@@ -199,26 +201,34 @@ export function GenerationPage() {
       <div className="page-header">
         <h1>Генерация расписания</h1>
         <div className="toolbar-actions">
-          <label>
-            Семестр
-            <Select value={selectedSemesterId} onChange={(v) => setSemesterId(Number(v))} disabled={generating}>
-              {semesters.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {semesterLabel(s.id)}
-                </option>
-              ))}
-            </Select>
-          </label>
-          <label>
-            Версия шаблона
-            <Select value={templateId} onChange={(v) => setTemplateId(Number(v))} disabled={generating}>
-              {templates.map((t) => (
-                <option key={t.id} value={t.id}>
-                  v{t.versionNo} · {t.status}
-                </option>
-              ))}
-            </Select>
-          </label>
+          <FilterSelect
+            label="Семестр"
+            hint="Семестр, чьи версии шаблона доступны для расчёта"
+            value={selectedSemesterId}
+            onChange={(v) => setSemesterId(v === '' ? '' : Number(v))}
+            disabled={generating}
+          >
+            <option value="">Выберите семестр</option>
+            {semesters.map((s) => (
+              <option key={s.id} value={s.id}>
+                {semesterLabel(s.id)}
+              </option>
+            ))}
+          </FilterSelect>
+          <FilterSelect
+            label="Версия шаблона"
+            hint="Версия, в которую солвер разложит нераспределённую нагрузку"
+            value={templateId}
+            onChange={(v) => setTemplateId(v === '' ? '' : Number(v))}
+            disabled={generating}
+          >
+            <option value="">Версия шаблона…</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                v{t.versionNo} · {t.status}
+              </option>
+            ))}
+          </FilterSelect>
           {!generating && draft == null && (
             <button type="button" className="btn btn-primary" onClick={() => void handleStart()} disabled={templateId === ''}>
               Сгенерировать

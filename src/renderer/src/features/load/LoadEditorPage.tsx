@@ -8,7 +8,8 @@ import { ruCommon } from '../../ui/locale'
 import { notifyError, notifySuccess } from '../../ui/toast'
 import { TeachingLoadDialog } from './TeachingLoadDialog'
 import { useSemesterOptions } from './useSemesterOptions'
-import { Select } from '../../ui/Select'
+import { FilterSelect } from '../../ui/FilterSelect'
+import { useInitialSelection } from '../../ui/useInitialSelection'
 
 const KIND_LABEL: Record<TeachingLoad['lessonKind'], string> = {
   theory: 'Теория',
@@ -33,9 +34,11 @@ export function LoadEditorPage() {
   const [editingRow, setEditingRow] = useState<TeachingLoad | 'new' | null>(null)
   const [pendingDelete, setPendingDelete] = useState<TeachingLoad | null>(null)
 
-  // Пока завуч явно не выбрал семестр, используем первый из списка — без отдельного
-  // эффекта на пустое selectedSemesterId, чтобы не плодить каскадные ре-рендеры.
-  const selectedSemesterId = semesterId !== '' ? semesterId : (semesters[0]?.id ?? '')
+  // Пока завуч явно не выбрал семестр, подставляем первый из списка — но ровно один раз,
+  // на его приезд: пока это считалось на каждый рендер, пустой пункт фильтра выбрать было
+  // нельзя, значение тут же возвращалось к первому семестру.
+  useInitialSelection(semesters, semesterId !== '', (list) => setSemesterId(list[0]!.id))
+  const selectedSemesterId = semesterId
 
   useEffect(() => {
     void api.invoke('groups:list', {}).then((res) => res.ok && setGroups(res.value))
@@ -100,14 +103,19 @@ export function LoadEditorPage() {
       <div className="page-header">
         <h1>Нагрузка</h1>
         <div className="toolbar-actions">
-          <Select value={selectedSemesterId} onChange={(v) => setSemesterId(v === '' ? '' : Number(v))}>
+          <FilterSelect
+            label="Семестр"
+            hint="Семестр, за который вводится и показывается нагрузка"
+            value={selectedSemesterId}
+            onChange={(v) => setSemesterId(v === '' ? '' : Number(v))}
+          >
             <option value="">Выберите семестр</option>
             {semesters.map((s) => (
               <option key={s.id} value={s.id}>
                 {semesterLabel(s.id)}
               </option>
             ))}
-          </Select>
+          </FilterSelect>
           <button type="button" className="btn btn-primary" disabled={selectedSemesterId === ''} onClick={() => setEditingRow('new')}>
             + Добавить нагрузку
           </button>

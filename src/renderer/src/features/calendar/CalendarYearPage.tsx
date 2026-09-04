@@ -4,6 +4,7 @@ import { api } from '../../api/client'
 import { EntityHistoryPanel } from '../../ui/EntityHistoryPanel'
 import { WEEKDAY_SHORT, ruCommon } from '../../ui/locale'
 import { notifyError, notifySuccess } from '../../ui/toast'
+import { FilterSelect } from '../../ui/FilterSelect'
 import { Select } from '../../ui/Select'
 
 const KIND_LABEL: Record<CalendarDay['kind'], string> = {
@@ -178,13 +179,19 @@ export function CalendarYearPage() {
       <div className="page-header">
         <h1>Календарь года</h1>
         <div className="toolbar-actions">
-          <Select value={yearId} onChange={(v) => setYearId(v === '' ? '' : Number(v))}>
+          <FilterSelect
+            label="Учебный год"
+            hint="Год, чей календарь показан ниже"
+            value={yearId}
+            onChange={(v) => setYearId(v === '' ? '' : Number(v))}
+          >
+            <option value="">Выберите год</option>
             {years.map((y) => (
               <option key={y.id} value={y.id}>
                 {y.name}
               </option>
             ))}
-          </Select>
+          </FilterSelect>
         </div>
       </div>
 

@@ -15,12 +15,16 @@ import { RolloutDialog } from './RolloutDialog'
 import { ScheduleGrid } from './ScheduleGrid'
 import { UnassignedLoadPanel } from './UnassignedLoadPanel'
 import { cellId, parseCellId, type DragPayload } from './types'
-import { Select } from '../../ui/Select'
+import { FilterSelect } from '../../ui/FilterSelect'
+import { useInitialSelection } from '../../ui/useInitialSelection'
 
 type CutKind = 'group' | 'teacher' | 'room'
 type ViewMode = 'week' | 'day'
 
 const WEEK_DAYS = [1, 2, 3, 4, 5, 6]
+
+/** Подпись второго фильтра зависит от разреза: «Все преподаватели» в поле «Группа» сбивало. */
+const CUT_TARGET_LABEL: Record<CutKind, string> = { group: 'Группа', teacher: 'Преподаватель', room: 'Кабинет' }
 
 // Стабильные ссылки: пустая сетка не должна пересоздавать зависимые useMemo на каждый рендер.
 const EMPTY_ENTRIES: TemplateEntryView[] = []
@@ -49,7 +53,8 @@ export function ScheduleTemplatePage() {
 
   const { semesters, label: semesterLabel } = useSemesterOptions()
   const [semesterId, setSemesterId] = useState<number | ''>(link.semesterId)
-  const selectedSemesterId = semesterId !== '' ? semesterId : (semesters[0]?.id ?? '')
+  useInitialSelection(semesters, semesterId !== '', (list) => setSemesterId(list[0]!.id))
+  const selectedSemesterId = semesterId
   const selectedSemester = semesters.find((s) => s.id === selectedSemesterId)
 
   const [templates, setTemplates] = useState<ScheduleTemplate[]>([])
@@ -319,27 +324,37 @@ export function ScheduleTemplatePage() {
       <div className="page-header">
         <h1>Шаблон недели</h1>
         <div className="toolbar-actions">
-          <Select value={selectedSemesterId} onChange={(v) => setSemesterId(v === '' ? '' : Number(v))}>
+          <FilterSelect
+            label="Семестр"
+            hint="Семестр, чьи версии шаблона показывать"
+            value={selectedSemesterId}
+            onChange={(v) => setSemesterId(v === '' ? '' : Number(v))}
+          >
             <option value="">Выберите семестр</option>
             {semesters.map((s) => (
               <option key={s.id} value={s.id}>
                 {semesterLabel(s.id)}
               </option>
             ))}
-          </Select>
-          <Select value={templateId} onChange={(v) => setTemplateId(v === '' ? '' : Number(v))}>
+          </FilterSelect>
+          <FilterSelect
+            label="Версия"
+            hint="Версия шаблона недели: черновик правится свободно, активная — действующая с указанной даты"
+            value={templateId}
+            onChange={(v) => setTemplateId(v === '' ? '' : Number(v))}
+          >
             <option value="">Версия шаблона…</option>
             {templates.map((t) => (
               <option key={t.id} value={t.id}>
                 v{t.versionNo} с {t.effectiveFrom} ({t.status})
               </option>
             ))}
-          </Select>
+          </FilterSelect>
           <button type="button" className="btn" disabled={selectedSemesterId === ''} onClick={() => setShowNewVersion(true)}>
             + Новая версия
           </button>
           {currentTemplate?.status === 'draft' && (
-            <button type="button" className="btn" onClick={() => void activateTemplate()}>
+            <button type="button" className="btn" title="Сделать эту версию действующей с её даты вступления в силу" onClick={() => void activateTemplate()}>
               Активировать
             </button>
           )}
@@ -369,7 +384,9 @@ export function ScheduleTemplatePage() {
       ) : (
         <>
           <div className="toolbar-actions" style={{ marginBottom: 12 }}>
-            <Select
+            <FilterSelect
+              label="Разрез"
+              hint="Чьё расписание показывать в сетке: группы, преподавателя или кабинета"
               value={cutKind}
               onChange={(v) => {
                 setCutKind(v as CutKind)
@@ -379,27 +396,37 @@ export function ScheduleTemplatePage() {
               <option value="group">По группе</option>
               <option value="teacher">По преподавателю</option>
               <option value="room">По кабинету</option>
-            </Select>
-            <Select value={cutTargetId} onChange={(v) => setCutTargetId(v === '' ? '' : Number(v))}>
+            </FilterSelect>
+            <FilterSelect
+              label={CUT_TARGET_LABEL[cutKind]}
+              hint="«Все» — показать сетку целиком, без отбора"
+              value={cutTargetId}
+              onChange={(v) => setCutTargetId(v === '' ? '' : Number(v))}
+            >
               <option value="">Все</option>
               {cutOptions.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.label}
                 </option>
               ))}
-            </Select>
-            <Select value={viewMode} onChange={(v) => setViewMode(v as ViewMode)}>
+            </FilterSelect>
+            <FilterSelect
+              label="Вид"
+              hint="Показать всю неделю сразу или один день крупнее"
+              value={viewMode}
+              onChange={(v) => setViewMode(v as ViewMode)}
+            >
               <option value="week">Неделя</option>
               <option value="day">День</option>
-            </Select>
+            </FilterSelect>
             {viewMode === 'day' && (
-              <Select value={viewDay} onChange={(v) => setViewDay(Number(v))}>
+              <FilterSelect label="День" hint="День недели, показанный в сетке" value={viewDay} onChange={(v) => setViewDay(Number(v))}>
                 {WEEK_DAYS.map((d) => (
                   <option key={d} value={d}>
                     {WEEKDAY_LABEL[d]}
                   </option>
                 ))}
-              </Select>
+              </FilterSelect>
             )}
             <button type="button" className="btn" onClick={() => void handleExportExcel('group')} disabled={cutKind !== 'group' || cutTargetId === ''}>
               Excel: группа

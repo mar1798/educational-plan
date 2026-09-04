@@ -5,7 +5,8 @@ import { api } from '../../api/client'
 import { DataTable } from '../../ui/DataTable'
 import { notifyError, notifySuccess } from '../../ui/toast'
 import { useSemesterOptions } from '../load/useSemesterOptions'
-import { Select } from '../../ui/Select'
+import { FilterSelect } from '../../ui/FilterSelect'
+import { useInitialSelection } from '../../ui/useInitialSelection'
 
 const columns: ColumnDef<TeacherLoadReportRow>[] = [
   { accessorKey: 'teacherName', header: 'Преподаватель' },
@@ -33,7 +34,8 @@ export function ReportTeacherLoadPage() {
   const [academicYearId, setAcademicYearId] = useState<number | ''>('')
   const [rows, setRows] = useState<TeacherLoadReportRow[]>([])
 
-  const selectedYearId = academicYearId !== '' ? academicYearId : (academicYears[0]?.id ?? '')
+  useInitialSelection(academicYears, academicYearId !== '', (list) => setAcademicYearId(list[0]!.id))
+  const selectedYearId = academicYearId
 
   useEffect(() => {
     if (selectedYearId === '') return
@@ -62,14 +64,19 @@ export function ReportTeacherLoadPage() {
       <div className="page-header">
         <h1>Выполнение нагрузки</h1>
         <div className="toolbar-actions">
-          <Select value={selectedYearId} onChange={(v) => setAcademicYearId(v === '' ? '' : Number(v))}>
+          <FilterSelect
+            label="Учебный год"
+            hint="Год, за который считается годовая нагрузка преподавателей"
+            value={selectedYearId}
+            onChange={(v) => setAcademicYearId(v === '' ? '' : Number(v))}
+          >
             <option value="">Выберите учебный год</option>
             {academicYears.map((y) => (
               <option key={y.id} value={y.id}>
                 {y.name}
               </option>
             ))}
-          </Select>
+          </FilterSelect>
           <button type="button" className="btn" onClick={() => void exportExcel()}>
             Экспорт в Excel
           </button>

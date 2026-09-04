@@ -6,7 +6,8 @@ import { DataTable } from '../../ui/DataTable'
 import { notifyError } from '../../ui/toast'
 import { OtherLoadPanel } from './OtherLoadPanel'
 import { useSemesterOptions } from './useSemesterOptions'
-import { Select } from '../../ui/Select'
+import { FilterSelect } from '../../ui/FilterSelect'
+import { useInitialSelection } from '../../ui/useInitialSelection'
 
 const groupColumns: ColumnDef<GroupBalanceRow>[] = [
   { accessorKey: 'groupName', header: 'Группа' },
@@ -64,8 +65,11 @@ export function LoadBalancePage() {
   const [byGroup, setByGroup] = useState<GroupBalanceRow[]>([])
   const [byTeacher, setByTeacher] = useState<TeacherBalanceRow[]>([])
 
-  // Пока завуч явно не выбрал семестр, используем первый из списка — производное значение.
-  const selectedSemesterId = semesterId !== '' ? semesterId : (semesters[0]?.id ?? '')
+  // Пока завуч явно не выбрал семестр, подставляем первый из списка — но ровно один раз,
+  // на его приезд: пока это считалось на каждый рендер, пустой пункт фильтра выбрать было
+  // нельзя, значение тут же возвращалось к первому семестру.
+  useInitialSelection(semesters, semesterId !== '', (list) => setSemesterId(list[0]!.id))
+  const selectedSemesterId = semesterId
 
   useEffect(() => {
     if (selectedSemesterId === '') return
@@ -84,14 +88,19 @@ export function LoadBalancePage() {
       <div className="page-header">
         <h1>Баланс нагрузки</h1>
         <div className="toolbar-actions">
-          <Select value={selectedSemesterId} onChange={(v) => setSemesterId(v === '' ? '' : Number(v))}>
+          <FilterSelect
+            label="Семестр"
+            hint="Семестр, за который считается баланс часов"
+            value={selectedSemesterId}
+            onChange={(v) => setSemesterId(v === '' ? '' : Number(v))}
+          >
             <option value="">Выберите семестр</option>
             {semesters.map((s) => (
               <option key={s.id} value={s.id}>
                 {semesterLabel(s.id)}
               </option>
             ))}
-          </Select>
+          </FilterSelect>
         </div>
       </div>
 
