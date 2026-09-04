@@ -181,6 +181,27 @@ export function ImportWizardPage() {
     [serviceFilter, inheritColumnIndexes],
   )
 
+  /**
+   * Подпись колонки из шапки самого файла. Без неё на шаге 4 колонки называются
+   * «Колонка 1…13», а первая колонка листа в реальных файлах часто пустая (поле
+   * страницы) — завучу приходилось считать смещение в уме и сопоставлять вслепую.
+   * Берём последнее непустое значение выше строки данных: шапка бывает двухуровневой,
+   * и нижний уровень («Часы», «Код вида») точнее верхнего («Кол-во часов I полугодие»).
+   */
+  const headerHints = useMemo(() => {
+    if (!grid) return []
+    const above = grid.slice(0, Math.max(0, dataStartRow - 1))
+    return Array.from({ length: columnCount }, (_, c) => {
+      for (let r = above.length - 1; r >= 0; r--) {
+        const text = cellText(above[r]?.[c] ?? null)
+        if (text !== '') return text
+      }
+      return ''
+    })
+  }, [grid, dataStartRow, columnCount])
+
+  const columnLabel = (c: number): string => (headerHints[c] ? `Колонка ${c + 1} — ${headerHints[c]}` : `Колонка ${c + 1}`)
+
   const columnMapping = useMemo(() => columns.map((c, i) => ({ columnIndex: i, field: c.field })).filter((c) => c.field !== ''), [columns])
   const numericFieldColumns = useMemo(
     () => columnMapping.filter((c) => dataRows.some((r) => typeof r[c.columnIndex] === 'number')).map((c) => c.columnIndex),
@@ -413,7 +434,10 @@ export function ImportWizardPage() {
                 <tr>
                   <th>#</th>
                   {Array.from({ length: columnCount }, (_, c) => (
-                    <th key={c}>Колонка {c + 1}</th>
+                    <th key={c}>
+                      Колонка {c + 1}
+                      {headerHints[c] ? <div className="history-empty">{headerHints[c]}</div> : null}
+                    </th>
                   ))}
                 </tr>
                 <tr>
@@ -499,7 +523,7 @@ export function ImportWizardPage() {
               <ul>
                 {reconciliation.map((r) => (
                   <li key={r.columnIndex} className={r.matches ? undefined : 'overlap-warning'}>
-                    Колонка {r.columnIndex + 1}: данные {r.dataSum}, «Итого» {r.controlSum} {r.matches ? '— совпадает' : '— расхождение'}
+                    {columnLabel(r.columnIndex)}: данные {r.dataSum}, «Итого» {r.controlSum} {r.matches ? '— совпадает' : '— расхождение'}
                   </li>
                 ))}
               </ul>
@@ -512,7 +536,7 @@ export function ImportWizardPage() {
               <option value="">Ключевая колонка…</option>
               {Array.from({ length: columnCount }, (_, c) => (
                 <option key={c} value={c}>
-                  Колонка {c + 1}
+                  {columnLabel(c)}
                 </option>
               ))}
             </Select>
@@ -520,7 +544,7 @@ export function ImportWizardPage() {
               <option value="">Проверяемая колонка…</option>
               {Array.from({ length: columnCount }, (_, c) => (
                 <option key={c} value={c}>
-                  Колонка {c + 1}
+                  {columnLabel(c)}
                 </option>
               ))}
             </Select>
