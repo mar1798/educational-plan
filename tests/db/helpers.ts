@@ -173,6 +173,12 @@ export function seedMinimalWorld(db: Db): MinimalWorld {
  * данных, а объём — например, приёмка §5.5 «снимок собирается за < 1 с».
  */
 export function seedCollegeWorld(db: Db, world: MinimalWorld): { loadIds: number[] } {
+  // Одна транзакция на все ~625 вставок: с synchronous = FULL каждая отдельная
+  // вставка — это отдельный fsync, и на медленном CI (Windows) сид уходил за 5 с.
+  return db.transaction(() => seedCollegeWorldRows(db, world))
+}
+
+function seedCollegeWorldRows(db: Db, world: MinimalWorld): { loadIds: number[] } {
   const teacherIds: number[] = []
   for (let i = 0; i < 140; i++) {
     teacherIds.push(

@@ -36,6 +36,8 @@ describe('services/snapshot.buildSolverInput (§5.5)', () => {
     expect(mine[0]!.students).toBe(25) // studentsCount группы из seedMinimalWorld
   })
 
+  // Таймаут повышен: сам сид на медленном CI занимает секунды, измеряется же только
+  // buildSolverInput — см. expect(elapsed) ниже.
   it('демо-колледж (39 групп, 390 строк нагрузки): снимок собирается меньше чем за секунду', () => {
     seedCollegeWorld(ctx.db, world)
     const tmpl = createTemplate(ctx.db, { semesterId: world.semesterId, effectiveFrom: '2026-09-01', note: null })
@@ -47,7 +49,7 @@ describe('services/snapshot.buildSolverInput (§5.5)', () => {
     expect(input.groups).toHaveLength(40) // 39 + группа из minimal-мира
     expect(input.units.length).toBeGreaterThan(300)
     expect(elapsed).toBeLessThan(1000)
-  })
+  }, 30_000)
 
   it('уже стоящая (is_locked) запись становится fixed и уменьшает число units', () => {
     const tmpl = createTemplate(ctx.db, { semesterId: world.semesterId, effectiveFrom: '2026-09-01', note: null })
