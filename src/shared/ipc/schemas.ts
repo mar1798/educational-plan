@@ -24,6 +24,7 @@ export const auditEntityInput = z.object({ entity: z.string().min(1), id: z.numb
 export const backupListInput = z.object({})
 export const backupCreateInput = z.object({ reason: z.literal('manual') })
 export const backupRestoreInput = z.object({ fileName: z.string().min(1) })
+export const backupDeleteInput = z.object({ fileName: z.string().min(1) })
 export const backupExternalCopyInput = z.object({})
 export const backupExternalStatusInput = z.object({})
 
@@ -63,6 +64,8 @@ export const specialityArchiveInput = z.object({
   rowVersion: z.number().int().positive(),
   archived: z.boolean(),
 })
+
+export const specialityDeleteInput = z.object({ id: z.number().int().positive() })
 
 export const cmcListInput = z.object({})
 
@@ -133,6 +136,8 @@ export const disciplineArchiveInput = z.object({
   archived: z.boolean(),
 })
 
+export const disciplineDeleteInput = z.object({ id: z.number().int().positive() })
+
 export const teacherCategoriesListInput = z.object({})
 
 // Преподаватели (§2.3).
@@ -175,6 +180,8 @@ export const teacherQualificationCloseInput = z.object({
   rowVersion: z.number().int().positive(),
   validTo: z.string().min(1, 'Укажите дату закрытия'),
 })
+
+export const teacherQualificationDeleteInput = z.object({ id: z.number().int().positive() })
 
 // Недоступность преподавателя (§2.3): «Иванова не ведёт по средам».
 const absenceKind = z.enum(['hard', 'soft'])
@@ -402,6 +409,8 @@ export const curriculumArchiveInput = z.object({
   archived: z.boolean(),
 })
 
+export const curriculumDeleteInput = z.object({ id: z.number().int().positive() })
+
 export const curriculumCopyInput = z.object({
   fromCurriculumId: z.number().int().positive(),
   specialityId: z.number().int().positive('Выберите специальность'),
@@ -549,6 +558,7 @@ export const scheduleTemplateCreateInput = z.object({
 
 export const scheduleTemplateActivateInput = z.object({ id: z.number().int().positive(), rowVersion: z.number().int().positive() })
 export const scheduleTemplateArchiveInput = z.object({ id: z.number().int().positive(), rowVersion: z.number().int().positive() })
+export const scheduleTemplateDeleteInput = z.object({ id: z.number().int().positive(), rowVersion: z.number().int().positive() })
 export const scheduleTemplateEntriesInput = z.object({ templateId: z.number().int().positive() })
 export const scheduleTemplateUnassignedLoadInput = z.object({ templateId: z.number().int().positive() })
 

@@ -602,6 +602,7 @@ export interface IpcContract {
   // Бэкапы и восстановление (§1.6, §1.7, §1.7a).
   'backup:list': { in: Record<string, never>; out: BackupInfo[] }
   'backup:create': { in: { reason: 'manual' }; out: BackupInfo }
+  'backup:delete': { in: { fileName: string }; out: { ok: true } }
   // Успешный вызов закрывает БД и перезапускает приложение — обычный ответ не возвращается.
   'backup:restore': { in: { fileName: string }; out: { ok: true } }
   'backup:externalCopy': { in: Record<string, never>; out: { copiedTo: string; at: string } | { cancelled: true } }
@@ -611,6 +612,7 @@ export interface IpcContract {
   'specialities:list': { in: { includeArchived?: boolean }; out: Speciality[] }
   'specialities:save': { in: SpecialitySaveInput; out: Speciality }
   'specialities:archive': { in: { id: number; rowVersion: number; archived: boolean }; out: { ok: true } }
+  'specialities:delete': { in: { id: number }; out: { ok: true } }
 
   'cmc:list': { in: Record<string, never>; out: Cmc[] }
   'cmc:save': { in: CmcSaveInput; out: Cmc }
@@ -629,6 +631,7 @@ export interface IpcContract {
   'disciplines:list': { in: { includeArchived?: boolean }; out: Discipline[] }
   'disciplines:save': { in: DisciplineSaveInput; out: Discipline }
   'disciplines:archive': { in: { id: number; rowVersion: number; archived: boolean }; out: { ok: true } }
+  'disciplines:delete': { in: { id: number }; out: { ok: true } }
 
   // Категории преподавателей — фиксированный набор из трёх строк (§4.3), заводится
   // один раз при первом запуске (см. ensureTeacherCategories); CRUD не нужен.
@@ -647,6 +650,7 @@ export interface IpcContract {
     in: { id: number; rowVersion: number; validTo: string }
     out: { ok: true; affectedLoadCount: number }
   }
+  'teacherQualifications:delete': { in: { id: number }; out: { ok: true } }
 
   'teacherAbsences:list': { in: { teacherId: number }; out: TeacherAbsence[] }
   'teacherAbsences:create': { in: TeacherAbsenceCreateInput; out: TeacherAbsence }
@@ -711,6 +715,8 @@ export interface IpcContract {
   'curricula:save': { in: CurriculumSaveInput; out: Curriculum }
   'curricula:approve': { in: { id: number; rowVersion: number }; out: { ok: true } }
   'curricula:archive': { in: { id: number; rowVersion: number; archived: boolean }; out: { ok: true } }
+  // Удаление плана целиком (§3.2): вместе со строками и их недельной раскладкой, одной отменяемой операцией.
+  'curricula:delete': { in: { id: number }; out: { operationId: number } }
   // Копирование на новый набор (§3.3, §3.10): одна операция, отменяемая целиком.
   'curricula:copy': { in: CurriculumCopyInput; out: { operationId: number; curriculum: Curriculum } }
 
@@ -757,6 +763,8 @@ export interface IpcContract {
   'scheduleTemplates:create': { in: ScheduleTemplateCreateInput; out: ScheduleTemplate }
   'scheduleTemplates:activate': { in: { id: number; rowVersion: number }; out: { ok: true } }
   'scheduleTemplates:archive': { in: { id: number; rowVersion: number }; out: { ok: true } }
+  // Удаление версии целиком (§4.1): доступно, пока с версии ничего не раскатано.
+  'scheduleTemplates:delete': { in: { id: number; rowVersion: number }; out: { operationId: number } }
   'scheduleTemplates:entries': { in: { templateId: number }; out: TemplateEntryView[] }
   'scheduleTemplates:unassignedLoad': { in: { templateId: number }; out: UnassignedLoadRow[] }
   'scheduleTemplates:placeEntry': { in: PlaceEntryInput; out: TemplateEntryView }

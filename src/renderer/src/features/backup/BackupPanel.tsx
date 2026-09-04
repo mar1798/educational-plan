@@ -24,6 +24,7 @@ export function BackupPanel() {
   const [externalAt, setExternalAt] = useState<string | null>(null)
   const [isStale, setIsStale] = useState(false)
   const [pendingRestore, setPendingRestore] = useState<string | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
 
   const refresh = useCallback(
@@ -72,6 +73,19 @@ export function BackupPanel() {
     }
   }
 
+  // Автопрореживание (§1.6) держит последние 20 копий, но пробную копию, снятую «чтобы
+  // посмотреть», приходилось ждать, пока её вытеснят: удаление убирает и файл, и строку.
+  async function remove(fileName: string) {
+    const res = await api.invoke('backup:delete', { fileName })
+    setPendingDelete(null)
+    if (!res.ok) {
+      notifyError(res.error.message)
+      return
+    }
+    setMessage(null)
+    await refresh()
+  }
+
   return (
     <section>
       <h2 className="section-title">Резервные копии</h2>
@@ -111,10 +125,25 @@ export function BackupPanel() {
                   Отмена
                 </button>
               </span>
+            ) : pendingDelete === b.fileName ? (
+              <span className="backup-confirm">
+                <strong>Удалить эту копию?</strong>
+                <button type="button" className="btn btn-sm btn-danger" onClick={() => void remove(b.fileName)}>
+                  Да, удалить
+                </button>
+                <button type="button" className="btn btn-sm" onClick={() => setPendingDelete(null)}>
+                  Отмена
+                </button>
+              </span>
             ) : (
-              <button type="button" className="btn btn-sm" onClick={() => setPendingRestore(b.fileName)}>
-                Восстановить
-              </button>
+              <span className="btn-group">
+                <button type="button" className="btn btn-sm" onClick={() => setPendingRestore(b.fileName)}>
+                  Восстановить
+                </button>
+                <button type="button" className="btn btn-sm" title="Удалить файл этой копии с диска" onClick={() => setPendingDelete(b.fileName)}>
+                  Удалить
+                </button>
+              </span>
             )}
           </div>
         ))}

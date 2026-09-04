@@ -3,7 +3,8 @@ import { curriculum, curriculumRow, curriculumWeek } from '../schema/curriculum'
 import { lesson } from '../schema/schedule'
 import { teachingLoad } from '../schema/load'
 import type { AuditContext } from './audit'
-import { closeRow, createRow, NotFoundError, updateRow } from './base-repo'
+import { closeRow, createRow, deleteRow, NotFoundError, updateRow } from './base-repo'
+import { ensureDeletable } from './reference-guard'
 import type { DbLike } from './types'
 
 /**
@@ -228,4 +229,35 @@ export function updateCurriculumWeeks(
     updateRow(tx, curriculumWeek, w.id, { hours: w.hours }, w.rowVersion, ctx)
   }
   return listCurriculumWeeks(tx, curriculumRowId)
+}
+
+/**
+ * Строка плана и её недельная раскладка (§3.4) — одно целое: раскладка ссылается на строку
+ * с `on delete restrict`, и без её удаления DELETE строки падал нарушением внешнего ключа.
+ */
+export function deleteCurriculumRowCascade(tx: DbLike, rowId: number, ctx: AuditContext = {}): void {
+  for (const w of tx.select().from(curriculumWeek).where(eq(curriculumWeek.curriculumRowId, rowId)).all()) {
+    deleteRow(tx, curriculumWeek, w.id, ctx)
+  }
+  deleteRow(tx, curriculumRow, rowId, ctx)
+}
+
+/**
+ * Удаление плана целиком (§3.2). Строки плана и их раскладка живут только внутри плана и
+ * уходят вместе с ним; то, что вышло за его пределы — розданная нагрузка — удаление
+ * блокирует: архивация для такого плана остаётся единственным способом убрать его из списков.
+ */
+export function deleteCurriculum(tx: DbLike, id: number, ctx: AuditContext = {}): void {
+  const existing = tx.select().from(curriculum).where(eq(curriculum.id, id)).get()
+  if (!existing) throw new NotFoundError('curriculum', id)
+
+  const label = `учебный план «${existing.name}»`
+  const rows = tx.select().from(curriculumRow).where(eq(curriculumRow.curriculumId, id)).all()
+  for (const r of rows) {
+    ensureDeletable(tx, label, r.id, [{ table: teachingLoad, column: teachingLoad.curriculumRowId, nounRu: 'строках нагрузки' }])
+  }
+  // От новых к старым: версионная правка строки (§3.2) оставляет supersedes_id на предыдущую
+  // версию, и удаление старой раньше новой упиралось бы во внешний ключ.
+  for (const r of [...rows].sort((a, b) => b.id - a.id)) deleteCurriculumRowCascade(tx, r.id, ctx)
+  deleteRow(tx, curriculum, id, ctx)
 }

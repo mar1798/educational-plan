@@ -67,6 +67,21 @@ export function CurriculaPage() {
       successRu: (row) => (row.status === 'archived' ? ruCommon.restoredOk : ruCommon.archivedOk),
       run: (row) => api.invoke('curricula:archive', { id: row.id, rowVersion: row.rowVersion, archived: row.status !== 'archived' }),
     },
+    {
+      key: 'delete',
+      labelRu: () => ruCommon.delete,
+      variant: 'danger',
+      confirmTitleRu: (row) => `Удалить план «${row.name}»?`,
+      confirmBodyRu: () =>
+        'Вместе с планом удалятся все его строки и их недельная раскладка. План, по строкам которого уже роздана нагрузка, удалить нельзя. ' +
+        'Удаление можно отменить на экране «Операции».',
+      confirmLabelRu: ruCommon.yesDelete,
+      successRu: () => ruCommon.deletedOk,
+      run: async (row) => {
+        const res = await api.invoke('curricula:delete', { id: row.id })
+        return res.ok ? { ok: true as const, value: { ok: true as const } } : res
+      },
+    },
   ]
 
   return (

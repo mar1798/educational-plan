@@ -2,11 +2,12 @@ import { join } from 'node:path'
 import { app, dialog, type BrowserWindow } from 'electron'
 import type Database from 'better-sqlite3'
 import type { Db } from '../db/client'
-import { backupsDir, createBackup, listBackups } from '../db/backup/backup'
+import { backupsDir, createBackup, deleteBackup, listBackups } from '../db/backup/backup'
 import { getLastExternalCopyAt, isExternalCopyStale, saveExternalCopy } from '../db/backup/external-copy'
 import { restoreFromBackup } from '../db/backup/restore'
 import {
   backupCreateInput,
+  backupDeleteInput,
   backupExternalCopyInput,
   backupExternalStatusInput,
   backupListInput,
@@ -25,6 +26,11 @@ export function registerBackupHandlers({ sqlite, db, dbPath, getWindow }: Backup
   handle('backup:list', backupListInput, () => listBackups(db))
 
   handle('backup:create', backupCreateInput, ({ reason }) => createBackup(sqlite, db, dbPath, reason))
+
+  handle('backup:delete', backupDeleteInput, ({ fileName }) => {
+    deleteBackup(db, dbPath, fileName)
+    return { ok: true as const }
+  })
 
   handle('backup:restore', backupRestoreInput, ({ fileName }) => {
     restoreFromBackup(sqlite, db, dbPath, fileName)

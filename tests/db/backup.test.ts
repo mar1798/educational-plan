@@ -6,6 +6,7 @@ import {
   BACKUP_RETENTION,
   backupsDir,
   createBackup,
+  deleteBackup,
   listBackups,
   registerBackup,
   snapshotDbFile,
@@ -79,6 +80,15 @@ describe('бэкапы (§1.6, §1.7, §1.7a)', () => {
 
     const filesOnDisk = readdirSync(backupsDir(dbPath))
     expect(filesOnDisk).toHaveLength(BACKUP_RETENTION)
+  })
+
+  it('удаление бэкапа убирает и файл, и запись', () => {
+    const info = createBackup(ctx.sqlite, ctx.db, dbPath, 'manual')
+
+    deleteBackup(ctx.db, dbPath, info.fileName)
+
+    expect(existsSync(join(backupsDir(dbPath), info.fileName))).toBe(false)
+    expect(listBackups(ctx.db)).toHaveLength(0)
   })
 
   it('восстановление из бэкапа: создаёт pre_restore бэкап и возвращает старое состояние', () => {

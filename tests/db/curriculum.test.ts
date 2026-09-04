@@ -6,6 +6,8 @@ import {
   copyCurriculum,
   countAffectedLessons,
   createCurriculumRow,
+  deleteCurriculum,
+  deleteCurriculumRowCascade,
   editCurriculumRow,
   generateCurriculumWeeks,
   listCurriculumWeeks,
@@ -139,6 +141,29 @@ describe('учебный план: строки, версионирование,
         { table: schema.teachingLoad, column: schema.teachingLoad.curriculumRowId, nounRu: 'нагрузке' },
       ]),
     ).toThrow(ReferencedError)
+  })
+
+  it('удаление строки плана уносит её недельную раскладку', () => {
+    const created = createCurriculumRow(ctx.db, world.curriculumId, { ...rowFields, disciplineId: world.disciplineId, hoursClassroom: 36 }, '2026-01-01')
+    generateCurriculumWeeks(ctx.db, created.id as number, 18)
+
+    ctx.db.transaction((tx) => deleteCurriculumRowCascade(tx, created.id as number))
+
+    expect(listCurriculumWeeks(ctx.db, created.id as number)).toHaveLength(0)
+    expect(ctx.db.select().from(schema.curriculumRow).where(eq(schema.curriculumRow.id, created.id as number)).all()).toHaveLength(0)
+  })
+
+  it('удаление плана блокируется розданной нагрузкой и проходит после её снятия, с откатом целиком', () => {
+    expect(() => ctx.db.transaction((tx) => deleteCurriculum(tx, world.curriculumId))).toThrow(ReferencedError)
+
+    ctx.db.delete(schema.teachingLoad).where(eq(schema.teachingLoad.curriculumRowId, world.curriculumRowId)).run()
+    const { operationId } = runOperation(ctx.db, 'bulk_edit', {}, (tx, opId) => deleteCurriculum(tx, world.curriculumId, { operationId: opId }))
+
+    expect(ctx.db.select().from(schema.curriculum).where(eq(schema.curriculum.id, world.curriculumId)).all()).toHaveLength(0)
+    expect(ctx.db.select().from(schema.curriculumRow).where(eq(schema.curriculumRow.curriculumId, world.curriculumId)).all()).toHaveLength(0)
+
+    undoOperation(ctx.db, operationId)
+    expect(ctx.db.select().from(schema.curriculumRow).where(eq(schema.curriculumRow.curriculumId, world.curriculumId)).all()).toHaveLength(1)
   })
 
   it('считает занятия, затронутые правкой строки плана, начиная с даты', () => {

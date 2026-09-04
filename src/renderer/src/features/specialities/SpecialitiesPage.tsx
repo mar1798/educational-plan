@@ -33,6 +33,16 @@ const actions: ReferenceCrudAction<Speciality>[] = [
     successRu: (row) => (row.archivedAt ? ruCommon.restoredOk : ruCommon.archivedOk),
     run: (row) => api.invoke('specialities:archive', { id: row.id, rowVersion: row.rowVersion, archived: !row.archivedAt }),
   },
+  {
+    key: 'delete',
+    labelRu: () => ruCommon.delete,
+    variant: 'danger',
+    confirmTitleRu: (row) => `Удалить «${row.name}»?`,
+    confirmBodyRu: () => 'Действие необратимо. Специальность, на которую есть планы или группы, удалить нельзя — её можно только архивировать.',
+    confirmLabelRu: ruCommon.yesDelete,
+    successRu: () => ruCommon.deletedOk,
+    run: (row) => api.invoke('specialities:delete', { id: row.id }),
+  },
 ]
 
 export function SpecialitiesPage() {

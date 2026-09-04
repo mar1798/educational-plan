@@ -4,6 +4,7 @@ import type Database from 'better-sqlite3'
 import { desc, eq } from 'drizzle-orm'
 import type { Db } from '../client'
 import { backup } from '../schema/system'
+import { NotFoundError } from '../repo/base-repo'
 
 export const BACKUP_RETENTION = 20
 
@@ -86,6 +87,18 @@ export function rotateBackups(db: Db, dir: string): void {
     }
     db.delete(backup).where(eq(backup.id, row.id)).run()
   }
+}
+
+/** Удаление одного бэкапа по имени файла (§1.6): запись и сам файл. */
+export function deleteBackup(db: Db, dbPath: string, fileName: string): void {
+  const row = db.select().from(backup).where(eq(backup.fileName, fileName)).get()
+  if (!row) throw new NotFoundError('backup', 0)
+  try {
+    unlinkSync(join(backupsDir(dbPath), row.fileName))
+  } catch {
+    // файла может уже не быть на диске — запись всё равно убираем, иначе список врёт
+  }
+  db.delete(backup).where(eq(backup.id, row.id)).run()
 }
 
 export function listBackups(db: Db) {

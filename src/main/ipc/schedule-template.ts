@@ -8,6 +8,7 @@ import {
   scheduleTemplateActivateInput,
   scheduleTemplateArchiveInput,
   scheduleTemplateCreateInput,
+  scheduleTemplateDeleteInput,
   scheduleTemplateEntriesInput,
   scheduleTemplateUnassignedLoadInput,
   scheduleTemplatesListInput,
@@ -20,6 +21,7 @@ import {
   applyRollout,
   archiveTemplate,
   createTemplate,
+  deleteTemplate,
   listLessonConflicts,
   listTemplates,
   moveEntry,
@@ -50,6 +52,14 @@ export function registerScheduleTemplateHandlers(db: Db) {
   handle('scheduleTemplates:archive', scheduleTemplateArchiveInput, ({ id, rowVersion }) => {
     db.transaction((tx) => archiveTemplate(tx, id, rowVersion, { reason: 'архивирование версии шаблона' }))
     return { ok: true as const }
+  })
+
+  handle('scheduleTemplates:delete', scheduleTemplateDeleteInput, ({ id, rowVersion }) => {
+    // Внутри операции (§1.5): удаляется вся сетка версии разом, и откат возвращает её целиком.
+    const { operationId } = runOperation(db, 'bulk_edit', { id }, (tx, opId) =>
+      deleteTemplate(tx, id, rowVersion, { operationId: opId, reason: 'удаление версии шаблона' }),
+    )
+    return { operationId }
   })
 
   handle('scheduleTemplates:entries', scheduleTemplateEntriesInput, ({ templateId }) => {

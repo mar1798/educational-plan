@@ -6,6 +6,7 @@ import {
   activateTemplate,
   applyRollout,
   createTemplate,
+  deleteTemplate,
   LockedEntryError,
   ScheduleConflictError,
   moveEntry,
@@ -16,6 +17,7 @@ import {
   templateEntriesView,
 } from '../../src/main/db/repo/schedule-template'
 import * as schema from '../../src/main/db/schema'
+import { ReferencedError } from '../../src/main/db/repo/reference-guard'
 import { createTestDb, seedMinimalWorld, type MinimalWorld } from './helpers'
 
 describe('шаблон расписания: версии, конфликты, закрепление, раскатка (§4)', () => {
@@ -143,6 +145,41 @@ describe('шаблон расписания: версии, конфликты, �
 
     const unlocked = setEntryLocked(ctx.db, entry.id as number, locked.rowVersion as number, false)
     expect(() => removeEntry(ctx.db, entry.id as number, unlocked.rowVersion as number)).not.toThrow()
+  })
+
+  it('удаление версии уносит её записи и откатывается целиком (4.1)', () => {
+    const tmpl = createTemplate(ctx.db, { semesterId: world.semesterId, effectiveFrom: '2026-09-01', note: null })
+    placeEntry(ctx.db, { templateId: tmpl.id as number, teachingLoadId: world.teachingLoadId, dayOfWeek: 2, pairNo: 1, weekParity: 'all', roomId: world.roomId })
+
+    const { operationId } = runOperation(ctx.db, 'bulk_edit', {}, (tx, opId) =>
+      deleteTemplate(tx, tmpl.id as number, tmpl.rowVersion as number, { operationId: opId }),
+    )
+
+    expect(ctx.db.select().from(schema.scheduleTemplate).where(eq(schema.scheduleTemplate.id, tmpl.id as number)).all()).toHaveLength(0)
+    expect(ctx.db.select().from(schema.templateEntry).where(eq(schema.templateEntry.templateId, tmpl.id as number)).all()).toHaveLength(0)
+
+    undoOperation(ctx.db, operationId)
+    expect(templateEntriesView(ctx.db, tmpl.id as number)).toHaveLength(1)
+  })
+
+  it('версию с уже раскатанными занятиями удалить нельзя (4.1, 4.10)', () => {
+    const tmpl = createTemplate(ctx.db, { semesterId: world.semesterId, effectiveFrom: '2026-09-01', note: null })
+    placeEntry(ctx.db, { templateId: tmpl.id as number, teachingLoadId: world.teachingLoadId, dayOfWeek: 2, pairNo: 1, weekParity: 'all', roomId: world.roomId })
+    const plan = planRollout(ctx.db, { templateId: tmpl.id as number, dateFrom: '2026-09-01', dateTo: '2026-09-01' })
+    const { operationId } = runOperation(ctx.db, 'rollout', {}, (tx, opId) => applyRollout(tx, plan, { operationId: opId }))
+
+    expect(() => ctx.db.transaction((tx) => deleteTemplate(tx, tmpl.id as number, tmpl.rowVersion as number))).toThrow(ReferencedError)
+
+    // После отката раскатки версия удаляется штатно — это и есть подсказанный пользователю путь.
+    undoOperation(ctx.db, operationId)
+    expect(() => ctx.db.transaction((tx) => deleteTemplate(tx, tmpl.id as number, tmpl.rowVersion as number))).not.toThrow()
+  })
+
+  it('версию, с которой скопирована другая, удалить нельзя (4.1)', () => {
+    const v1 = createTemplate(ctx.db, { semesterId: world.semesterId, effectiveFrom: '2026-09-01', note: null })
+    createTemplate(ctx.db, { semesterId: world.semesterId, effectiveFrom: '2026-09-15', note: null, copyFromTemplateId: v1.id as number })
+
+    expect(() => ctx.db.transaction((tx) => deleteTemplate(tx, v1.id as number, v1.rowVersion as number))).toThrow(ReferencedError)
   })
 
   it('раскатка не раньше effective_from шаблона (4.10)', () => {

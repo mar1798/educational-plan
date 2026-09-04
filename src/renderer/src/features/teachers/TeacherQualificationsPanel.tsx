@@ -73,6 +73,19 @@ export function TeacherQualificationsPanel({ teacherId }: TeacherQualificationsP
       })
   }
 
+  // Закрытие датой — для квалификации, которая была и кончилась; удаление — для строки,
+  // добавленной по ошибке: закрытая «с 01.09 по 01.09» иначе висела бы в карточке навсегда.
+  function remove(item: TeacherQualification) {
+    api.invoke('teacherQualifications:delete', { id: item.id }).then((res) => {
+      if (!res.ok) {
+        notifyError(res.error.message)
+        return undefined
+      }
+      notifySuccess(ruCommon.deletedOk)
+      return load()
+    })
+  }
+
   return (
     <div className="subpanel">
       <h3>Квалификации</h3>
@@ -84,11 +97,16 @@ export function TeacherQualificationsPanel({ teacherId }: TeacherQualificationsP
             {disciplineName(item.disciplineId)} — с {item.validFrom}
             {item.validTo ? ` по ${item.validTo}` : ''}
           </span>
-          {!item.validTo && (
-            <button className="btn-link" onClick={() => close(item)}>
-              {ruCommon.close}
+          <span className="btn-group">
+            {!item.validTo && (
+              <button className="btn-link" onClick={() => close(item)}>
+                {ruCommon.close}
+              </button>
+            )}
+            <button className="btn-link" onClick={() => remove(item)}>
+              {ruCommon.delete}
             </button>
-          )}
+          </span>
         </div>
       ))}
       <div className="subpanel-add">

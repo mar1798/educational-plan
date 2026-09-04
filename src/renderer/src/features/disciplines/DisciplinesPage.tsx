@@ -59,6 +59,16 @@ const actions: ReferenceCrudAction<Discipline>[] = [
     successRu: (row) => (row.archivedAt ? ruCommon.restoredOk : ruCommon.archivedOk),
     run: (row) => api.invoke('disciplines:archive', { id: row.id, rowVersion: row.rowVersion, archived: !row.archivedAt }),
   },
+  {
+    key: 'delete',
+    labelRu: () => ruCommon.delete,
+    variant: 'danger',
+    confirmTitleRu: (row) => `Удалить «${row.name}»?`,
+    confirmBodyRu: () => 'Действие необратимо. Дисциплину, попавшую в планы, нагрузку или занятия, удалить нельзя — её можно только архивировать.',
+    confirmLabelRu: ruCommon.yesDelete,
+    successRu: () => ruCommon.deletedOk,
+    run: (row) => api.invoke('disciplines:delete', { id: row.id }),
+  },
 ]
 
 export function DisciplinesPage() {

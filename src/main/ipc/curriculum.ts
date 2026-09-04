@@ -5,6 +5,7 @@ import {
   curriculumApproveInput,
   curriculumArchiveInput,
   curriculumCopyInput,
+  curriculumDeleteInput,
   curriculumRowCreateInput,
   curriculumRowDeleteInput,
   curriculumRowEditInput,
@@ -17,11 +18,13 @@ import {
   curriculumWeeksSaveInput,
 } from '../../shared/ipc/schemas'
 import type { Db } from '../db/client'
-import { createRow, deleteRow, updateRow } from '../db/repo/base-repo'
+import { createRow, updateRow } from '../db/repo/base-repo'
 import {
   copyCurriculum,
   countAffectedLessons,
   createCurriculumRow,
+  deleteCurriculum,
+  deleteCurriculumRowCascade,
   editCurriculumRow,
   generateCurriculumWeeks,
   listCurriculumWeeks,
@@ -68,6 +71,13 @@ export function registerCurriculumHandlers(db: Db) {
     return { ok: true as const }
   })
 
+  handle('curricula:delete', curriculumDeleteInput, ({ id }) => {
+    const { operationId } = runOperation(db, 'bulk_edit', { curriculumId: id }, (tx, operationId) =>
+      deleteCurriculum(tx, id, { operationId, reason: 'удаление учебного плана' }),
+    )
+    return { operationId }
+  })
+
   handle('curricula:copy', curriculumCopyInput, ({ fromCurriculumId, specialityId, admissionYear, name }) => {
     const { operationId, result } = runOperation(db, 'bulk_edit', { fromCurriculumId, specialityId, admissionYear, name }, (tx, operationId) =>
       copyCurriculum(tx, fromCurriculumId, { specialityId, admissionYear, name }, { operationId, reason: 'копирование учебного плана' }),
@@ -100,7 +110,7 @@ export function registerCurriculumHandlers(db: Db) {
   handle('curriculumRows:delete', curriculumRowDeleteInput, ({ id }) => {
     db.transaction((tx) => {
       ensureDeletable(tx, `Строка плана #${id}`, id, [{ table: teachingLoad, column: teachingLoad.curriculumRowId, nounRu: 'нагрузке' }])
-      deleteRow(tx, curriculumRow, id, { reason: 'удаление строки плана' })
+      deleteCurriculumRowCascade(tx, id, { reason: 'удаление строки плана' })
     })
     return { ok: true as const }
   })

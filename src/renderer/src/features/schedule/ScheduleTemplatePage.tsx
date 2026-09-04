@@ -5,6 +5,7 @@ import type { Room, ScheduleTemplate, StudyGroup, Teacher, TemplateEntryView, Un
 import { describeConflicts } from '../../../../shared/schedule/messages'
 import { findConflicts, type SlotEntry } from '../../../../solver/validate'
 import { api } from '../../api/client'
+import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { notifyError, notifySuccess } from '../../ui/toast'
 import { WEEKDAY_LABEL } from '../../ui/locale'
 import { useSemesterOptions } from '../load/useSemesterOptions'
@@ -78,6 +79,7 @@ export function ScheduleTemplatePage() {
   const [editingEntry, setEditingEntry] = useState<TemplateEntryView | null>(null)
   const [showNewVersion, setShowNewVersion] = useState(false)
   const [showRollout, setShowRollout] = useState(false)
+  const [confirmDeleteTemplate, setConfirmDeleteTemplate] = useState(false)
   const [hoverConflict, setHoverConflict] = useState<{ cellKey: string; message: string } | null>(null)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
@@ -271,6 +273,25 @@ export function ScheduleTemplatePage() {
 
   const currentTemplate = templates.find((t) => t.id === templateId) ?? null
 
+  async function archiveCurrentTemplate() {
+    if (!currentTemplate) return
+    const res = await api.invoke('scheduleTemplates:archive', { id: currentTemplate.id, rowVersion: currentTemplate.rowVersion })
+    if (!res.ok) return notifyError(res.error.message)
+    notifySuccess('Версия отправлена в архив')
+    void api.invoke('scheduleTemplates:list', { semesterId: selectedSemesterId as number }).then((r) => r.ok && setTemplates(r.value))
+  }
+
+  /** Удаление версии целиком (§4.1): вместе со всей её сеткой, одной отменяемой операцией. */
+  async function deleteCurrentTemplate() {
+    if (!currentTemplate) return
+    const res = await api.invoke('scheduleTemplates:delete', { id: currentTemplate.id, rowVersion: currentTemplate.rowVersion })
+    setConfirmDeleteTemplate(false)
+    if (!res.ok) return notifyError(res.error.message)
+    notifySuccess('Версия шаблона удалена')
+    setTemplateId('')
+    void api.invoke('scheduleTemplates:list', { semesterId: selectedSemesterId as number }).then((r) => r.ok && setTemplates(r.value))
+  }
+
   async function handleExportExcel(kind: 'group' | 'teacher' | 'summary') {
     if (templateId === '') return
     const targetId = kind === 'summary' ? undefined : cutTargetId === '' ? undefined : cutTargetId
@@ -320,6 +341,21 @@ export function ScheduleTemplatePage() {
           {currentTemplate?.status === 'draft' && (
             <button type="button" className="btn" onClick={() => void activateTemplate()}>
               Активировать
+            </button>
+          )}
+          {currentTemplate != null && currentTemplate.status !== 'archived' && (
+            <button type="button" className="btn" title="Убрать версию из рабочего списка, сохранив её содержимое" onClick={() => void archiveCurrentTemplate()}>
+              Архивировать
+            </button>
+          )}
+          {currentTemplate != null && (
+            <button
+              type="button"
+              className="btn btn-danger"
+              title="Удалить версию вместе со всей её сеткой занятий"
+              onClick={() => setConfirmDeleteTemplate(true)}
+            >
+              Удалить версию
             </button>
           )}
           <button type="button" className="btn btn-primary" disabled={templateId === ''} onClick={() => setShowRollout(true)}>
@@ -423,6 +459,21 @@ export function ScheduleTemplatePage() {
               }
             })
           }}
+        />
+      )}
+
+      {confirmDeleteTemplate && currentTemplate && (
+        <ConfirmDialog
+          open
+          danger
+          title={`Удалить версию v${currentTemplate.versionNo}?`}
+          description={
+            'Занятия этой версии в шаблоне будут удалены. Если с версии уже раскатано расписание, удаление не пройдёт — ' +
+            'сначала отмените раскатку на экране «Операции». Само удаление тоже можно отменить там же.'
+          }
+          confirmLabel="Да, удалить"
+          onConfirm={() => void deleteCurrentTemplate()}
+          onCancel={() => setConfirmDeleteTemplate(false)}
         />
       )}
 

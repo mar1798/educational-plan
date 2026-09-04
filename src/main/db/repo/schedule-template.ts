@@ -3,6 +3,7 @@ import { describeConflict, describeConflicts, type ConflictNameResolver } from '
 import { findConflicts, type SlotEntry } from '../../../solver/validate'
 import type { AuditContext } from './audit'
 import { createRow, deleteRow, NotFoundError, OptimisticLockError, updateRow } from './base-repo'
+import { ensureDeletable } from './reference-guard'
 import type { DbLike } from './types'
 import { calendarDay, calendarPeriod, semester } from '../schema/calendar'
 import { curriculumRow, discipline } from '../schema/curriculum'
@@ -437,6 +438,34 @@ export function activateTemplate(tx: DbLike, id: number, rowVersion: number, ctx
 
 export function archiveTemplate(tx: DbLike, id: number, rowVersion: number, ctx: AuditContext = {}): Record<string, unknown> {
   return updateRow(tx, scheduleTemplate, id, { status: 'archived' }, rowVersion, ctx)
+}
+
+/**
+ * Физическое удаление версии шаблона вместе с её записями (§4.1).
+ *
+ * Шаблон — не историчная сущность в смысле §2.2: черновик, набитый солвером и признанный
+ * неудачным, незачем держать в архиве, иначе список версий растёт без предела. Но всё,
+ * что из версии уже раскатано, — история занятий, и её удаление не трогает: раскатанные
+ * занятия ссылаются на шаблон с `on delete restrict`, поэтому удаление блокируется до
+ * отката раскатки (операция kind='rollout' на экране «Операции»).
+ */
+export function deleteTemplate(tx: DbLike, id: number, rowVersion: number, ctx: AuditContext = {}): void {
+  const existing = tx.select().from(scheduleTemplate).where(eq(scheduleTemplate.id, id)).get()
+  if (!existing) throw new NotFoundError('schedule_template', id)
+  if (existing.rowVersion !== rowVersion) throw new OptimisticLockError('schedule_template', id)
+
+  const label = `версию шаблона v${existing.versionNo}`
+  ensureDeletable(tx, label, id, [
+    { table: lesson, column: lesson.templateId, nounRu: 'раскатанных занятиях — сначала отмените раскатку на экране «Операции»' },
+    { table: scheduleTemplate, column: scheduleTemplate.basedOnId, nounRu: 'версиях, скопированных с неё' },
+  ])
+
+  for (const e of tx.select().from(templateEntry).where(eq(templateEntry.templateId, id)).all()) {
+    // Занятие могло потерять свою запись шаблона (см. removeEntry), но остаться привязанным
+    // к самой версии — такие ловит проверка по lesson.templateId выше.
+    deleteRow(tx, templateEntry, e.id, ctx)
+  }
+  deleteRow(tx, scheduleTemplate, id, ctx)
 }
 
 export interface PlaceEntryInput {

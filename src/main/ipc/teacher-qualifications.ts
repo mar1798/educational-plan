@@ -3,10 +3,11 @@ import type { TeacherQualification } from '../../shared/ipc/contract'
 import {
   teacherQualificationCloseInput,
   teacherQualificationCreateInput,
+  teacherQualificationDeleteInput,
   teacherQualificationsListInput,
 } from '../../shared/ipc/schemas'
 import type { Db } from '../db/client'
-import { closeRow, createRow } from '../db/repo/base-repo'
+import { closeRow, createRow, deleteRow } from '../db/repo/base-repo'
 import { countAffectedLoad } from '../db/repo/teaching-load-guard'
 import { teacherQualification } from '../db/schema/people'
 import { handle } from './register'
@@ -32,5 +33,13 @@ export function registerTeacherQualificationsHandlers(db: Db) {
 
     if (!before) return { ok: true as const, affectedLoadCount: 0 }
     return { ok: true as const, affectedLoadCount: countAffectedLoad(db, before.teacherId, before.disciplineId) }
+  })
+
+  // Закрытие датой — для квалификации, которая была и кончилась; удаление — для строки,
+  // заведённой по ошибке: на саму квалификацию ничто не ссылается, связь с нагрузкой
+  // идёт через пару преподаватель+дисциплина и здесь не рвётся.
+  handle('teacherQualifications:delete', teacherQualificationDeleteInput, ({ id }) => {
+    db.transaction((tx) => deleteRow(tx, teacherQualification, id, { reason: 'удаление квалификации' }))
+    return { ok: true as const }
   })
 }
