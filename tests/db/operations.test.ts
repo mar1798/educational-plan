@@ -26,14 +26,19 @@ describe('операции и откат (§1.5)', () => {
   it('массовое изменение 100 строк, затем откат — состояние совпадает с исходным', () => {
     const teacherCategoryId = ctx.db.select().from(schema.teacherCategory).get()!.id
     const ids: number[] = []
-    for (let i = 0; i < 100; i++) {
-      const row = createRow(ctx.db, schema.teacher, {
-        lastName: `Тестова${i}`,
-        firstName: 'Т',
-        categoryId: teacherCategoryId,
-      })
-      ids.push(row.id as number)
-    }
+    // Подготовка — одной транзакцией: вне её каждый createRow это два отдельных
+    // автокоммита, а при synchronous = FULL (§4.1) каждый из них — fsync, и на
+    // Windows-CI сотня строк уходила за отведённые тесту 5 с.
+    ctx.db.transaction((tx) => {
+      for (let i = 0; i < 100; i++) {
+        const row = createRow(tx, schema.teacher, {
+          lastName: `Тестова${i}`,
+          firstName: 'Т',
+          categoryId: teacherCategoryId,
+        })
+        ids.push(row.id as number)
+      }
+    })
 
     const before = dumpTeachers()
 
