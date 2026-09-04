@@ -429,11 +429,14 @@ table.data-table {
   background: rgba(15, 23, 42, 0.55);
 }
 
+/* Центрируется через `inset: 0; margin: auto`, а не `transform`: transform сделал бы
+   диалог containing block для `position: fixed`, а меню `Select` портируется внутрь него
+   (см. Select.tsx) и считает координаты во вьюпорте. */
 .dialog-content {
   position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  inset: 0;
+  margin: auto;
+  height: max-content;
   background: var(--color-surface);
   border-radius: var(--radius);
   box-shadow: var(--shadow);

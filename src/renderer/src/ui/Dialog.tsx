@@ -15,7 +15,10 @@ export function Dialog({ open, onOpenChange, title, description, children }: Dia
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
         <RadixDialog.Overlay className="dialog-overlay" />
-        <RadixDialog.Content className="dialog-content">
+        {/* data-select-portal-root: меню `Select` рисуется порталом внутрь диалога, иначе
+            модальный слой Radix (pointer-events на <body> и ловушка фокуса) не пускает
+            в него ни клик, ни фокус строки поиска. */}
+        <RadixDialog.Content className="dialog-content" data-select-portal-root="">
           <div className="dialog-header">
             <RadixDialog.Title asChild>
               <h2>{title}</h2>

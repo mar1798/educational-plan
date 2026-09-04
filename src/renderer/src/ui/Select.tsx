@@ -114,6 +114,7 @@ export function Select({
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
   const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({})
+  const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null)
 
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -151,6 +152,10 @@ export function Select({
   const openMenu = (): void => {
     const start = options.findIndex((o) => o.value === current)
     setActiveIndex(start >= 0 ? start : 0)
+    // Внутри модального диалога меню обязано жить в его поддереве: Radix гасит
+    // `pointer-events` на <body> и держит ловушку фокуса, поэтому портал в body давал
+    // список, сквозь который клик проваливался, а строка поиска теряла фокус.
+    setPortalRoot(triggerRef.current?.closest<HTMLElement>('[data-select-portal-root]') ?? document.body)
     setOpen(true)
   }
 
@@ -319,6 +324,7 @@ export function Select({
         <span className="select-caret" aria-hidden="true" />
       </button>
       {open &&
+        portalRoot != null &&
         createPortal(
           <div className="select-menu" ref={menuRef} style={menuStyle} onKeyDown={onKeyDown}>
             {withSearch && (
@@ -356,7 +362,7 @@ export function Select({
               ))}
             </div>
           </div>,
-          document.body,
+          portalRoot,
         )}
     </>
   )
