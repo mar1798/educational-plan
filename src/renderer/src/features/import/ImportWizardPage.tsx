@@ -13,6 +13,8 @@ import {
   type TargetEntity,
 } from '../../../../shared/import/engine'
 import { api } from '../../api/client'
+import { ConfirmDialog } from '../../ui/ConfirmDialog'
+import { ruCommon } from '../../ui/locale'
 import { useSemesterOptions } from '../load/useSemesterOptions'
 import { notifyError, notifySuccess } from '../../ui/toast'
 import { Select } from '../../ui/Select'
@@ -75,6 +77,8 @@ export function ImportWizardPage() {
   const [curriculumId, setCurriculumId] = useState<number | ''>('')
   const [semesterId, setSemesterId] = useState<number | ''>('')
   const [validFrom, setValidFrom] = useState(todayIso())
+
+  const [pendingProfileDelete, setPendingProfileDelete] = useState<ImportProfile | null>(null)
 
   const [applying, setApplying] = useState(false)
   const [applyResult, setApplyResult] = useState<ImportApplyResult | null>(null)
@@ -181,6 +185,27 @@ export function ImportWizardPage() {
     [serviceFilter, inheritColumnIndexes],
   )
 
+  /**
+   * Подпись колонки из шапки самого файла. Без неё на шаге 4 колонки называются
+   * «Колонка 1…13», а первая колонка листа в реальных файлах часто пустая (поле
+   * страницы) — завучу приходилось считать смещение в уме и сопоставлять вслепую.
+   * Берём последнее непустое значение выше строки данных: шапка бывает двухуровневой,
+   * и нижний уровень («Часы», «Код вида») точнее верхнего («Кол-во часов I полугодие»).
+   */
+  const headerHints = useMemo(() => {
+    if (!grid) return []
+    const above = grid.slice(0, Math.max(0, dataStartRow - 1))
+    return Array.from({ length: columnCount }, (_, c) => {
+      for (let r = above.length - 1; r >= 0; r--) {
+        const text = cellText(above[r]?.[c] ?? null)
+        if (text !== '') return text
+      }
+      return ''
+    })
+  }, [grid, dataStartRow, columnCount])
+
+  const columnLabel = (c: number): string => (headerHints[c] ? `Колонка ${c + 1} — ${headerHints[c]}` : `Колонка ${c + 1}`)
+
   const columnMapping = useMemo(() => columns.map((c, i) => ({ columnIndex: i, field: c.field })).filter((c) => c.field !== ''), [columns])
   const numericFieldColumns = useMemo(
     () => columnMapping.filter((c) => dataRows.some((r) => typeof r[c.columnIndex] === 'number')).map((c) => c.columnIndex),
@@ -236,6 +261,23 @@ export function ImportWizardPage() {
     } else {
       notifyError(res.error.message)
     }
+  }
+
+  /**
+   * Удаление профиля (§3.8d). Канал `import:profiles:delete` был в контракте с самого
+   * начала, но из мастера не вызывался: ошибочно сохранённое сопоставление оставалось
+   * в списке навсегда, и отличить его от рабочего можно было только по имени.
+   */
+  async function deleteProfile(profile: ImportProfile) {
+    const res = await api.invoke('import:profiles:delete', { id: profile.id })
+    setPendingProfileDelete(null)
+    if (!res.ok) return notifyError(res.error.message)
+
+    notifySuccess(`Профиль «${profile.name}» удалён`)
+    setProfiles((prev) => prev.filter((p) => p.id !== profile.id))
+    // Настройки остаются на экране — удалён профиль, а не разметка, которую завуч уже
+    // видит в предпросмотре; сбрасывается только привязка к исчезнувшей записи.
+    if (profileId === profile.id) setProfileId('')
   }
 
   async function apply() {
@@ -298,22 +340,32 @@ export function ImportWizardPage() {
           {profiles.length > 0 && (
             <div className="form-field">
               <label htmlFor="import-profile">Профиль сопоставления (§3.8d)</label>
-              <Select
-                id="import-profile"
-                value={profileId}
-                onChange={(v) => {
-                  const id = v === '' ? '' : Number(v)
-                  setProfileId(id)
-                  if (id !== '') applyProfile(id)
-                }}
-              >
-                <option value="">Без профиля — настроить заново</option>
-                {profiles.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </Select>
+              <div className="btn-group">
+                <Select
+                  id="import-profile"
+                  value={profileId}
+                  onChange={(v) => {
+                    const id = v === '' ? '' : Number(v)
+                    setProfileId(id)
+                    if (id !== '') applyProfile(id)
+                  }}
+                >
+                  <option value="">Без профиля — настроить заново</option>
+                  {profiles.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </Select>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  disabled={selectedProfile == null}
+                  onClick={() => selectedProfile && setPendingProfileDelete(selectedProfile)}
+                >
+                  {ruCommon.delete}
+                </button>
+              </div>
             </div>
           )}
           <div className="dialog-actions">
@@ -413,7 +465,10 @@ export function ImportWizardPage() {
                 <tr>
                   <th>#</th>
                   {Array.from({ length: columnCount }, (_, c) => (
-                    <th key={c}>Колонка {c + 1}</th>
+                    <th key={c}>
+                      Колонка {c + 1}
+                      {headerHints[c] ? <div className="history-empty">{headerHints[c]}</div> : null}
+                    </th>
                   ))}
                 </tr>
                 <tr>
@@ -489,6 +544,18 @@ export function ImportWizardPage() {
         </div>
       )}
 
+      {pendingProfileDelete && (
+        <ConfirmDialog
+          open
+          title={`Удалить профиль «${pendingProfileDelete.name}»?`}
+          description={ruCommon.confirmDeleteBody}
+          confirmLabel={ruCommon.yesDelete}
+          danger
+          onConfirm={() => void deleteProfile(pendingProfileDelete)}
+          onCancel={() => setPendingProfileDelete(null)}
+        />
+      )}
+
       {step === 5 && grid && (
         <div className="card">
           <h3>5. Предпросмотр и применение</h3>
@@ -499,7 +566,7 @@ export function ImportWizardPage() {
               <ul>
                 {reconciliation.map((r) => (
                   <li key={r.columnIndex} className={r.matches ? undefined : 'overlap-warning'}>
-                    Колонка {r.columnIndex + 1}: данные {r.dataSum}, «Итого» {r.controlSum} {r.matches ? '— совпадает' : '— расхождение'}
+                    {columnLabel(r.columnIndex)}: данные {r.dataSum}, «Итого» {r.controlSum} {r.matches ? '— совпадает' : '— расхождение'}
                   </li>
                 ))}
               </ul>
@@ -512,7 +579,7 @@ export function ImportWizardPage() {
               <option value="">Ключевая колонка…</option>
               {Array.from({ length: columnCount }, (_, c) => (
                 <option key={c} value={c}>
-                  Колонка {c + 1}
+                  {columnLabel(c)}
                 </option>
               ))}
             </Select>
@@ -520,7 +587,7 @@ export function ImportWizardPage() {
               <option value="">Проверяемая колонка…</option>
               {Array.from({ length: columnCount }, (_, c) => (
                 <option key={c} value={c}>
-                  Колонка {c + 1}
+                  {columnLabel(c)}
                 </option>
               ))}
             </Select>
