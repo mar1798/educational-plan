@@ -76,6 +76,12 @@ h3 {
   margin: 0 0 12px;
 }
 
+/* Заголовок, у которого выше есть сосед, открывает новый раздел — ему нужен воздух сверху. */
+.app-content h2:not(:first-child),
+.app-content h3:not(:first-child) {
+  margin-top: 24px;
+}
+
 /* Каркас: боковое меню + контент (§2.1) */
 
 .app-shell {
@@ -195,6 +201,15 @@ h3 {
   padding: 4px 6px;
 }
 
+/* Ссылка «назад» над заголовком страницы: боковой отступ .btn-link сдвигал её на 6 px
+   правее заголовка, а снизу зазора не было вовсе — ссылка липла к названию плана. */
+.page-back {
+  display: inline-block;
+  margin-bottom: 6px;
+  padding-left: 0;
+  padding-right: 0;
+}
+
 /* Компактная кнопка для строк таблиц и подпанелей, где 34 px разрывают строку. */
 .btn-sm {
   min-height: 28px;
@@ -246,6 +261,7 @@ h3 {
   display: flex;
   align-items: center;
   gap: 12px;
+  margin-top: 16px;
   margin-bottom: 12px;
 }
 
@@ -470,9 +486,9 @@ table.data-table {
 /* История изменений (§2.10) */
 
 .history-panel {
-  margin-top: 8px;
+  margin-top: 20px;
   border-top: 1px solid var(--color-border);
-  padding-top: 12px;
+  padding-top: 14px;
 }
 
 .history-panel h3 {
@@ -504,9 +520,9 @@ table.data-table {
 /* Вложенные под-разделы карточки: квалификации, недоступность и т.п. (§2.3) */
 
 .subpanel {
-  margin-top: 8px;
+  margin-top: 20px;
   border-top: 1px solid var(--color-border);
-  padding-top: 12px;
+  padding-top: 14px;
 }
 
 .subpanel h3 {
@@ -536,7 +552,7 @@ table.data-table {
   gap: 8px;
   align-items: flex-end;
   flex-wrap: wrap;
-  margin-top: 8px;
+  margin-top: 12px;
 }
 
 .subpanel-add .form-field {
@@ -573,7 +589,7 @@ table.data-table {
 /* Схемы деления на подгруппы и проверка совместимости (§2.5, §2.6). */
 
 .scheme-card {
-  padding: 8px 0;
+  padding: 14px 0;
   border-bottom: 1px dashed var(--color-border);
 }
 
@@ -593,7 +609,7 @@ table.data-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
-  margin: 4px 0;
+  margin: 8px 0 12px;
 }
 
 .bounds-table th,
@@ -607,9 +623,9 @@ table.data-table {
 }
 
 .position-bar-block {
-  margin-top: 12px;
+  margin-top: 20px;
   border-top: 1px solid var(--color-border);
-  padding-top: 12px;
+  padding-top: 14px;
 }
 
 .position-bar-row {

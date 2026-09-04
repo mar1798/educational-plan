@@ -153,7 +153,7 @@ export function CurriculumEditorPage() {
     <div>
       <div className="page-header">
         <div>
-          <button type="button" className="btn-link" onClick={() => navigate('/curricula')}>
+          <button type="button" className="btn-link page-back" onClick={() => navigate('/curricula')}>
             ← К списку планов
           </button>
           <h1>
