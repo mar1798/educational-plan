@@ -1,6 +1,6 @@
 # Карта репозитория и границы слоёв
 
-Общая схема слоёв — PLAN.md §3.1. Здесь — где что лежит фактически и какие границы
+Здесь — где что лежит фактически и какие границы
 удерживаются принудительно.
 
 ## Поток данных
@@ -37,9 +37,8 @@ main/ipc/generation.ts → solver-host/manager.ts ──fork──▶ utilityPro
 | `src/shared/schedule/` | `messages.ts` (русские тексты конфликтов), `weights.ts` |
 | `src/solver/` | чистый TS-солвер |
 | `drizzle/` | сгенерированные SQL-миграции + `meta/_journal.json`; коммитятся |
-| `patterns/` | образцы xlsx, **не** данные и не спецификация формата |
 
-**Пустые директории-заглушки** из первоначальной раскладки PLAN §2: `src/main/audit/`,
+**Пустые директории-заглушки** из первоначальной раскладки проекта: `src/main/audit/`,
 `src/main/backup/`, `src/main/db/repositories/`, `src/shared/domain/`,
 `src/renderer/src/components/ui/`, `src/renderer/src/print/`, `samples/`. Реальный код живёт
 в `db/repo/`, `db/backup/`, `renderer/src/ui/`. Не класть новое в пустые — либо удалить их,
@@ -85,7 +84,7 @@ main/ipc/generation.ts → solver-host/manager.ts ──fork──▶ utilityPro
 
 ## Асинхронная генерация
 
-Жизненный цикл (PLAN §3.5) реализован в `ipc/generation.ts` + `solver-host/manager.ts`:
+Жизненный цикл генерации реализован в `ipc/generation.ts` + `solver-host/manager.ts`:
 
 1. `generation:start` — снимок собирается в одной читающей транзакции (`buildSolverInput`),
    заводится `jobId`, поднимается `utilityProcess`.

@@ -3,7 +3,9 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 Проект и общение — на русском. Комментарии в коде объясняют «почему», а не «что», и ссылаются
-на пункты плана (`§4.6`, `§3.4`) — держать этот стиль.
+на разделы исходного плана проектирования (`§4.6`, `§3.4`) — держать этот стиль. Сам план
+удалён из рабочего дерева и доступен в истории (`git show f6f2458:PLAN.md`); всё, что нужно
+в работе, перенесено в доки ниже.
 
 ## Справочники
 
@@ -11,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 | Документ | Когда открывать |
 |---|---|
-| [PLAN.md](./PLAN.md) | **источник истины**: архитектура §3, схема БД §4, алгоритм §5, этапы §6 и таблица 47 принятых решений §1.1 |
+| [docs/decisions.md](./docs/decisions.md) | **источник истины по предметной области**: 47 принятых решений и непроверенные допущения |
 | [docs/dev-workflow.md](./docs/dev-workflow.md) | команды, окружение, ABI-грабли, CI, устройство тестов |
 | [docs/architecture.md](./docs/architecture.md) | карта репозитория, границы слоёв, обработка ошибок, жизненный цикл генерации |
 | [docs/data-layer.md](./docs/data-layer.md) | запись в БД, аудит, операции и откат, историчность, миграции, бэкапы, 36 таблиц |
@@ -21,8 +23,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | [docs/domain-glossary.md](./docs/domain-glossary.md) | предметная область: кредиты, подгруппы, потоки, клинические базы, замены |
 | [docs/windows-install.md](./docs/windows-install.md) | установка на Windows, SmartScreen |
 
-Предметная область неочевидна из кода: прежде чем менять поведение, сверяться с §1.1 PLAN.md
-и с глоссарием.
+Предметная область неочевидна из кода: прежде чем менять поведение, сверяться с
+[решениями](./docs/decisions.md) и с глоссарием.
 
 ## Команды
 
@@ -64,12 +66,13 @@ npm run build:win       # NSIS .exe
 
 ## Мелочи, экономящие время
 
-- Пустые директории-заглушки из первоначальной раскладки плана (`src/main/audit/`,
+- Пустые директории-заглушки из первоначальной раскладки проекта (`src/main/audit/`,
   `src/main/backup/`, `src/main/db/repositories/`, `src/shared/domain/`,
   `src/renderer/src/components/ui/`, `src/renderer/src/print/`, `samples/`) — кода там нет,
   реальный живёт в `db/repo/`, `db/backup/`, `renderer/src/ui/`.
-- `patterns/*.xlsx` — образцы предметной области и тестовый набор, **не** боевые данные и не
-  спецификация формата: импорт сознательно format-agnostic.
+- Образцы xlsx, по которым разбиралась предметная область, в репозитории не лежат: они были
+  **не** боевыми данными и не спецификацией формата (решения п. 17, 47), импорт сознательно
+  format-agnostic. Структура образцов зафиксирована в фикстурах `tests/import/`.
 - Перед сдачей: `npm run typecheck && npm run lint && npm test`, плюс `npm run bench:solver`,
   если трогал `src/solver/**` или `services/snapshot.ts`.
 - `/commit` (`.claude/commands/commit.md`) — разложить текущие изменения по смыслу,
