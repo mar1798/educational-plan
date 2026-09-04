@@ -27,11 +27,24 @@
 | `npm run db:generate` | `drizzle-kit generate` после правки схемы |
 | `npm run db:migrate` | применить миграции к рабочей БД вручную |
 | `npm run db:studio` | drizzle-kit studio |
-| `npm run seed:demo` | демо-данные |
+| `npm run seed:demo` | демо-данные в рабочую БД (`<userData>/data/college.db`) |
+| `npm run demo:db` | пересобрать демо-БД дистрибутива в `resources/demo/college.db` |
 | `npm run rebuild` | пересборка `better-sqlite3` под Electron вручную |
 | `npm run build` | typecheck + `electron-vite build` |
 | `npm run build:mac` | `.app` без инсталлятора — локальная проверка упакованной сборки |
 | `npm run build:win` | NSIS `.exe` в `release/` |
+
+### Демо-данные внутри дистрибутива
+
+`build:mac`/`build:win` перед упаковкой вызывают `demo:db` (`scripts/build-demo-db.mjs`):
+`scripts/seed-demo.ts` пишет
+демо-колледж в `resources/demo/college.db` (файл в git не лежит — генерируется, детерминирован),
+electron-builder кладёт его в `resources/demo/` дистрибутива, а `main/index.ts` при старте
+копирует в `<userData>/data/college.db`, **только если рабочей БД ещё нет**. Так завуч после
+установки сразу видит заполненный колледж, а переустановка поверх его данных ничего не трогает.
+
+Собрать пустой дистрибутив: удалить `resources/demo/` и запустить `electron-builder` напрямую
+(`filter: college.db` пропустит отсутствующий файл).
 
 Один файл тестов: `npm test -- tests/db/repo.test.ts`
 Один кейс по имени: `npm test -- -t 'подстрока названия'`

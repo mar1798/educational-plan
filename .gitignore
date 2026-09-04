@@ -12,3 +12,6 @@ drizzle/meta/*.json.bak
 scripts/.dev.db
 scripts/.dev.db-shm
 scripts/.dev.db-wal
+
+# Демо-БД для дистрибутива — генерируется `npm run demo:db`
+resources/demo/

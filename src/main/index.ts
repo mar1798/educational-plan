@@ -1,5 +1,5 @@
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { app, BrowserWindow, dialog } from 'electron'
 import { createBackup, registerBackup, snapshotDbFile } from './db/backup/backup'
 import { createDb } from './db/client'
@@ -44,6 +44,30 @@ function migrationsPath(): string {
 
 function dbPath(): string {
   return join(app.getPath('userData'), 'data', 'college.db')
+}
+
+/**
+ * Демо-БД, вшитая в дистрибутив (`npm run demo:db` перед сборкой). Её кладут в userData
+ * только на первом запуске: завуч открывает приложение и сразу видит заполненный колледж,
+ * а не пустые справочники. Дальше это обычная рабочая база — переустановка поверх
+ * существующих данных ничего не перезатирает.
+ */
+function seedDbPath(): string | null {
+  const source = app.isPackaged ? join(process.resourcesPath, 'demo', 'college.db') : join(__dirname, '../../resources/demo/college.db')
+  return existsSync(source) ? source : null
+}
+
+/** Копия демо-БД — не повод не запуститься: при ошибке стартуем с пустой базой. */
+function installSeedDb(target: string): void {
+  const source = seedDbPath()
+  if (!source) return
+  try {
+    mkdirSync(dirname(target), { recursive: true })
+    copyFileSync(source, target)
+    console.log(`[db] первый запуск: развёрнута демо-база из ${source}`)
+  } catch (error) {
+    console.error('[db] не удалось развернуть демо-базу', error)
+  }
 }
 
 let mainWindow: BrowserWindow | null = null
@@ -93,6 +117,7 @@ async function bootstrap() {
   applyContentSecurityPolicy()
 
   const path = dbPath()
+  if (!existsSync(path)) installSeedDb(path)
   // Бэкап перед миграцией (§1.6) имеет смысл только для уже существующей БД —
   // на первом запуске файла ещё нет, бэкапировать нечего.
   const isExistingDb = existsSync(path)

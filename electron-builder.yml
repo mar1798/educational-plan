@@ -21,6 +21,12 @@ extraResources:
     filter:
       - '**/*'
       - '!meta/*.json.bak'
+  # Демо-колледж, разворачиваемый при первом запуске (`npm run demo:db`).
+  # Файл генерируется, в git не лежит — без него сборка просто выйдет пустой.
+  - from: resources/demo
+    to: demo
+    filter:
+      - 'college.db'
 
 mac:
   target:
