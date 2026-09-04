@@ -23,20 +23,11 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
-
-  # Порог качества этапа 6: жадная фаза < 3 с, ноль жёстких нарушений и падение штрафа
-  # минимум на 40 % после локального поиска. `bench:solver` сам выходит с кодом 1, если
-  # порог не выдержан, — отдельная job, потому что прогон занимает около минуты.
-  bench:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
+      # Порог качества этапа 6: жадная фаза < 3 с, ноль жёстких нарушений и падение штрафа
+      # минимум на 40 % после локального поиска. `bench:solver` сам выходит с кодом 1, если
+      # порог не выдержан. Живёт здесь, а не в отдельной job: сам прогон — около минуты,
+      # а отдельная job стоила бы ещё одного `npm ci` с пересборкой better-sqlite3,
+      # то есть дороже, чем экономит. Критический путь всё равно задаёт build-win.
       - run: npm run bench:solver
 
   # Этап 8 (Windows-релиз) / риск R1: better-sqlite3 должен собраться под ABI Electron
@@ -54,10 +45,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # Собрать мало — модуль должен ещё и грузиться под win32-ABI Electron. Полный прогон
-      # тестов делает именно это (все они открывают БД), а заодно проверяет путь с
-      # кириллицей и пробелами на настоящей Windows-ФС (риск R2, tests/db/paths.test.ts).
-      - run: npm test
+      # Собрать мало — модуль должен ещё и грузиться под win32-ABI Electron. Это делают
+      # тесты, открывающие БД, а заодно проверяется путь с кириллицей и пробелами на
+      # настоящей Windows-ФС (риск R2, tests/db/paths.test.ts). Берём только tests/db и
+      # tests/import: всё платформозависимое — там, а tests/solver по §3.4 не знает ни про
+      # Node, ни про ФС, и его повторный прогон на второй ОС ничего нового не проверяет.
+      - run: npm test -- tests/db tests/import
       - run: npm run build:win
       - uses: actions/upload-artifact@v4
         with:
