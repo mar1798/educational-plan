@@ -637,6 +637,12 @@ export const importApplyInput = z.object({
   validFrom: z.string().min(1, 'Укажите дату начала действия'),
 })
 
+export const importPreflightInput = z.object({
+  rows: z.array(z.record(z.string(), cellValue)),
+  semesterId: z.number().int().positive('Выберите семестр'),
+  validFrom: z.string().min(1, 'Укажите дату начала действия'),
+})
+
 export const exportExcelInput = z.object({
   templateId: z.number().int().positive(),
   kind: z.enum(['group', 'teacher', 'summary']),

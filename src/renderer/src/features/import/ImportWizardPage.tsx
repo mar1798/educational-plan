@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Curriculum, ImportApplyResult, ImportProfile, SheetInfo } from '../../../../shared/ipc/contract'
+import type { Curriculum, ImportApplyResult, ImportMissingReport, ImportProfile, SheetInfo } from '../../../../shared/ipc/contract'
 import {
   applyBlockHeaders,
   applyContextInheritance,
@@ -111,6 +111,11 @@ export function ImportWizardPage() {
 
   const [applying, setApplying] = useState(false)
   const [applyResult, setApplyResult] = useState<ImportApplyResult | null>(null)
+
+  const [missing, setMissing] = useState<ImportMissingReport | null>(null)
+  const [missingRefresh, setMissingRefresh] = useState(0)
+  const [confirmCreateMissing, setConfirmCreateMissing] = useState(false)
+  const [creatingMissing, setCreatingMissing] = useState(false)
 
   useEffect(() => {
     void api.invoke('import:profiles:list', { targetEntity }).then((res) => res.ok && setProfiles(res.value))
@@ -345,6 +350,53 @@ export function ImportWizardPage() {
     mappedRows.length > 0 &&
     (targetEntity !== 'curriculum' || curriculumId !== '') &&
     (targetEntity !== 'teaching_load' || semesterId !== '')
+
+  /**
+   * Чего не хватает в справочниках под нагрузку из файла — спрашиваем main (он же потом
+   * и заводит). Без этой проверки на пустой базе импорт «применялся» с сотнями пропусков,
+   * и завуч узнавал о недостающих группах и планах только из списка причин.
+   */
+  const preflightReady = step === 5 && targetEntity === 'teaching_load' && semesterId !== '' && mappedRows.length > 0 && missingRequiredFields.length === 0
+  useEffect(() => {
+    // Пока условия не выполнены, панель не показывается, а прежний отчёт не сбрасываем:
+    // он заменится свежим, как только проверка снова станет возможной.
+    if (!preflightReady || typeof semesterId !== 'number') return
+    let cancelled = false
+    // Предпросмотр пересчитывается на каждое нажатие клавиши в настройках — проверку
+    // справочников гоняем после паузы, а не на каждую правку.
+    const timer = setTimeout(() => {
+      void api.invoke('import:preflight', { rows: mappedRows, semesterId, validFrom }).then((res) => {
+        if (cancelled) return
+        if (res.ok) setMissing(res.value)
+        else notifyError(res.error.message)
+      })
+    }, 400)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [preflightReady, mappedRows, semesterId, validFrom, missingRefresh])
+
+  const missingTotal = missing
+    ? missing.specialities.length +
+      missing.disciplines.length +
+      missing.teachers.length +
+      missing.groups.length +
+      missing.curricula.length +
+      missing.curriculumRows.length +
+      missing.qualifications.length
+    : 0
+
+  async function createMissing() {
+    if (semesterId === '') return
+    setConfirmCreateMissing(false)
+    setCreatingMissing(true)
+    const res = await api.invoke('import:createMissing', { rows: mappedRows, semesterId, validFrom })
+    setCreatingMissing(false)
+    if (!res.ok) return notifyError(res.error.message)
+    notifySuccess(`Заведено записей: ${res.value.created} (операция #${res.value.operationId}, отменить можно в разделе «Операции»)`)
+    setMissingRefresh((n) => n + 1)
+  }
 
   /**
    * Сохранение сопоставления профилем (§3.8d). `update = true` правит выбранный профиль
@@ -781,6 +833,20 @@ export function ImportWizardPage() {
         </div>
       )}
 
+      {confirmCreateMissing && missing && (
+        <ConfirmDialog
+          open
+          title={`Завести недостающее — записей: ${missingTotal}?`}
+          description={
+            'Дисциплины — блок 1, цикл СПО3, базовая часть; преподаватели — имя инициалом, категория «Штат»; учебные планы — черновиком, ' +
+            'часы из файла, кредиты = часы ÷ 30. Всё это стоит потом проверить в справочниках. Заведение — отдельная операция, её можно отменить в разделе «Операции».'
+          }
+          confirmLabel="Завести"
+          onConfirm={() => void createMissing()}
+          onCancel={() => setConfirmCreateMissing(false)}
+        />
+      )}
+
       {pendingProfileDelete && (
         <ConfirmDialog
           open
@@ -892,6 +958,15 @@ export function ImportWizardPage() {
             <input type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
           </div>
 
+          {targetEntity === 'teaching_load' && preflightReady && (
+            <MissingReferencesPanel
+              report={missing}
+              total={missingTotal}
+              creating={creatingMissing}
+              onCreate={() => setConfirmCreateMissing(true)}
+            />
+          )}
+
           <p>
             <strong>Будет создано записей: {mappedRows.length}</strong>
           </p>
@@ -976,6 +1051,80 @@ export function ImportWizardPage() {
               </button>
             )}
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const MISSING_SECTIONS: { key: keyof Omit<ImportMissingReport, 'problems'>; label: string; item: (x: never) => string }[] = [
+  { key: 'specialities', label: 'Специальности', item: (x: ImportMissingReport['specialities'][number]) => `${x.code} — ${x.name}` },
+  { key: 'disciplines', label: 'Дисциплины', item: (x: ImportMissingReport['disciplines'][number]) => x.name },
+  {
+    key: 'teachers',
+    label: 'Преподаватели',
+    item: (x: ImportMissingReport['teachers'][number]) => [x.lastName, x.firstName, x.middleName].filter(Boolean).join(' '),
+  },
+  {
+    key: 'groups',
+    label: 'Группы',
+    item: (x: ImportMissingReport['groups'][number]) =>
+      `${x.name}: ${x.course} курс, набор ${x.admissionYear}, ${x.funding === 'contract' ? 'контракт' : 'бюджет'}, ${x.studentsCount} студ.${x.studentsCountDefaulted ? ' (в файле нет — по умолчанию)' : ''}`,
+  },
+  { key: 'curricula', label: 'Учебные планы', item: (x: ImportMissingReport['curricula'][number]) => x.name },
+  {
+    key: 'curriculumRows',
+    label: 'Строки учебных планов',
+    item: (x: ImportMissingReport['curriculumRows'][number]) => `${x.curriculum}: ${x.disciplineName}, ${x.semesterNo}-й семестр, ${x.hoursClassroom} ч`,
+  },
+  { key: 'qualifications', label: 'Квалификации', item: (x: ImportMissingReport['qualifications'][number]) => `${x.teacher} — ${x.disciplineName}` },
+]
+
+/**
+ * Что нужно завести в справочниках, чтобы нагрузка из файла легла целиком. Список и
+ * значения считает main (import:preflight) — здесь только показ.
+ */
+function MissingReferencesPanel({ report, total, creating, onCreate }: { report: ImportMissingReport | null; total: number; creating: boolean; onCreate: () => void }) {
+  if (!report) return <p className="history-empty">Проверяем справочники…</p>
+  return (
+    <div className="subpanel missing-references">
+      <h4>Справочники для нагрузки</h4>
+      {total === 0 && report.problems.length === 0 && <p>Всё нужное уже есть в справочниках — строки лягут без пропусков по этой причине.</p>}
+      {total > 0 && <p>Чтобы нагрузка легла, в программе не хватает записей. Их можно завести из этого же файла одной кнопкой:</p>}
+      {MISSING_SECTIONS.map(({ key, label, item }) => {
+        const list = report[key] as never[]
+        if (list.length === 0) return null
+        return (
+          <details key={key}>
+            <summary>
+              {label}: {list.length}
+            </summary>
+            <ul>
+              {list.slice(0, 200).map((x, i) => (
+                <li key={i}>{item(x)}</li>
+              ))}
+            </ul>
+            {list.length > 200 && <p className="history-empty">…и ещё {list.length - 200}</p>}
+          </details>
+        )
+      })}
+      {report.problems.length > 0 && (
+        <>
+          <p>Завести автоматически нельзя — поправьте файл или настройки мастера:</p>
+          <ul>
+            {report.problems.map((p) => (
+              <li key={p} className="overlap-warning">
+                {p}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {total > 0 && (
+        <div className="dialog-actions">
+          <button type="button" className="btn btn-primary" disabled={creating} onClick={onCreate}>
+            {creating ? 'Заводим…' : `Завести недостающее (${total})`}
+          </button>
         </div>
       )}
     </div>

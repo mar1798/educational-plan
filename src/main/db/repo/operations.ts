@@ -8,6 +8,21 @@ import type { Db } from '../client'
 
 export type OperationKind = 'generate' | 'rollout' | 'import' | 'bulk_edit' | 'restore' | 'substitution'
 
+/**
+ * На строки, созданные операцией, уже ссылаются более поздние изменения: «Завести
+ * недостающее» из мастера импорта заводит группы и планы, а следующая операция — импорт —
+ * вешает на них нагрузку. Откатывать надо в обратном порядке.
+ */
+export class OperationDependedError extends Error {
+  constructor(operationId: number) {
+    super(
+      `Операцию #${operationId} нельзя отменить: на созданные ею записи уже ссылаются более поздние изменения (например, нагрузка из импорта). ` +
+        'Сначала отмените их в разделе «Операции».',
+    )
+    this.name = 'OperationDependedError'
+  }
+}
+
 export class OperationNotUndoableError extends Error {
   constructor(operationId: number, status: string) {
     super(`Операцию #${operationId} нельзя отменить: статус «${status}»`)
@@ -70,9 +85,15 @@ export function undoOperation(db: Db, operationId: number): void {
       const table = resolveTable(snap.tableName)
       const cols = getTableColumns(table) as Record<string, SQLiteColumn>
       if (snap.beforeJson == null) {
-        // Строка была создана этой операцией — откат её физически удаляет:
-        // ничто вне этой же операции не могло успеть на неё сослаться.
-        tx.delete(table).where(eq(cols.id!, snap.rowId)).run()
+        // Строка была создана этой операцией — откат её физически удаляет. Сослаться на неё
+        // могла более поздняя операция (импорт после «Завести недостающее»): FK это ловит,
+        // и вместо английского текста SQLite завуч получает, что откатить сначала.
+        try {
+          tx.delete(table).where(eq(cols.id!, snap.rowId)).run()
+        } catch (e) {
+          if (e instanceof Error && /FOREIGN KEY constraint failed/i.test(e.message)) throw new OperationDependedError(operationId)
+          throw e
+        }
       } else if (snap.afterJson == null) {
         // Строка была физически удалена этой операцией (deleteRow, §2.2) — откат
         // вставляет её обратно с тем же id и прежними значениями.

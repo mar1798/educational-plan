@@ -501,6 +501,27 @@ export interface ImportApplyResult {
   skipped: { row: Record<string, Cell>; reason: string }[]
 }
 
+/**
+ * Чего не хватает в справочниках, чтобы нагрузка из файла легла (шаг 5 мастера). Всё, что
+ * перечислено, кнопка «Завести недостающее» создаёт одной операцией; `problems` — то, что
+ * завести автоматически нельзя и нужно поправить в файле или в мастере.
+ */
+export interface ImportMissingReport {
+  specialities: { code: string; name: string }[]
+  disciplines: { name: string }[]
+  teachers: { source: string; lastName: string; firstName: string; middleName: string | null }[]
+  groups: { name: string; specialityCode: string; course: number; admissionYear: number; funding: 'budget' | 'contract'; studentsCount: number; studentsCountDefaulted: boolean }[]
+  curricula: { name: string }[]
+  curriculumRows: { curriculum: string; disciplineName: string; course: number; semesterNo: number; hoursClassroom: number }[]
+  qualifications: { teacher: string; disciplineName: string }[]
+  problems: string[]
+}
+
+export interface ImportCreateMissingResult {
+  operationId: number
+  created: number
+}
+
 // Замены (§этап 7, §1.1 п.22, п.29): мастер работает над материализованными `lesson`,
 // не над `template_entry` — это первый экран, показывающий занятия по конкретным датам.
 export interface TeacherLessonRow {
@@ -784,6 +805,10 @@ export interface IpcContract {
   'import:profiles:delete': { in: { id: number }; out: { ok: true } }
   // Операция вида 'import' (§1.5) — откатывается одной кнопкой на экране «Операции» (3.9).
   'import:apply': { in: ImportApplyInput; out: ImportApplyResult }
+  // Проверка справочников под нагрузку из файла и заведение недостающего — отдельная
+  // операция 'import', откатывается независимо от самого импорта.
+  'import:preflight': { in: ImportPreflightInput; out: ImportMissingReport }
+  'import:createMissing': { in: ImportPreflightInput; out: ImportCreateMissingResult }
 
   // Экспорт расписания (§5.10-5.11): пользователь сам выбирает файл через showSaveDialog.
   'export:excel': { in: { templateId: number; kind: 'group' | 'teacher' | 'summary'; targetId?: number }; out: { path: string } | { cancelled: true } }
@@ -1088,6 +1113,12 @@ export interface ImportApplyInput {
   rows: Record<string, Cell>[]
   curriculumId?: number
   semesterId?: number
+  validFrom: string
+}
+
+export interface ImportPreflightInput {
+  rows: Record<string, Cell>[]
+  semesterId: number
   validFrom: string
 }
 

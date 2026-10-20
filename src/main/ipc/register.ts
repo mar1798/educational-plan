@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import type { z } from 'zod'
 import type { IpcChannel, IpcContract } from '../../shared/ipc/contract'
 import { NotFoundError, OptimisticLockError } from '../db/repo/base-repo'
+import { OperationDependedError } from '../db/repo/operations'
 import { ReferencedError } from '../db/repo/reference-guard'
 import { LockedEntryError, ScheduleConflictError } from '../db/repo/schedule-template'
 import { err, ok, type Result } from '../../shared/result'
@@ -19,7 +20,7 @@ function toAppError(e: unknown): AppError {
   if (e instanceof NotFoundError) {
     return { code: 'NOT_FOUND', message: e.message }
   }
-  if (e instanceof ReferencedError || e instanceof LockedEntryError) {
+  if (e instanceof ReferencedError || e instanceof LockedEntryError || e instanceof OperationDependedError) {
     return { code: 'BLOCKED', message: e.message }
   }
   if (e instanceof ScheduleConflictError) {

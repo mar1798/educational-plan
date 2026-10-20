@@ -1258,3 +1258,14 @@ table.data-table {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
+.missing-references summary {
+  cursor: pointer;
+  padding: 3px 0;
+}
+
+.missing-references .dialog-actions {
+  justify-content: flex-start;
+}
+
+
