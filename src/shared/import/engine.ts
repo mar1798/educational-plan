@@ -175,6 +175,11 @@ export const TARGET_SCHEMAS: Record<TargetEntity, TargetFieldSpec[]> = {
     { field: 'disciplineName', labelRu: 'Дисциплина', required: true },
     { field: 'lessonKind', labelRu: 'Вид занятия (лекция/практическое/семинар/лабораторное)', required: true },
     { field: 'hoursPlanned', labelRu: 'Часы', required: true },
+    // Годовая нагрузка держит оба полугодия в одной строке: с полугодием запись уходит в
+    // семестр того же учебного года (§1.1 п.38), и файл загружается за один проход.
+    { field: 'halfYear', labelRu: 'Полугодие (I/II)', required: false },
+    // Нагрузке численность не нужна; по ней заводятся группы, которых ещё нет в справочнике.
+    { field: 'studentsCount', labelRu: 'Численность группы (для новых групп)', required: false },
   ],
   teacher: [
     { field: 'lastName', labelRu: 'Фамилия', required: true },
@@ -197,13 +202,166 @@ export const TARGET_SCHEMAS: Record<TargetEntity, TargetFieldSpec[]> = {
 export interface ColumnMapping {
   columnIndex: number
   field: string
+  /** Признаки записи колонки-значения: { lessonKind: 'лекция', halfYear: 'I' } — см. mapToEntity. */
+  constants?: Record<string, string>
 }
 
-/** Сопоставление колонок → поля целевой сущности (§3.8), без знания о конкретных таблицах БД. */
-export function mapToEntity(rows: Grid, columns: ColumnMapping[]): Record<string, Cell>[] {
-  return rows
-    .map((row) => Object.fromEntries(columns.map((c) => [c.field, row[c.columnIndex] ?? null])))
-    .filter((obj) => Object.values(obj).some((v) => cellText(v) !== ''))
+/** Поля, которые сопоставлены несколькими колонками сразу, — колонки-значения «широкой» таблицы. */
+export function unpivotFields(columns: ColumnMapping[]): Set<string> {
+  const counts = new Map<string, number>()
+  for (const c of columns) counts.set(c.field, (counts.get(c.field) ?? 0) + 1)
+  return new Set([...counts].filter(([, n]) => n > 1).map(([field]) => field))
+}
+
+/**
+ * Сопоставление колонок → поля целевой сущности (§3.8), без знания о конкретных таблицах БД.
+ *
+ * Таблица бывает «широкой»: одна строка файла — пара «преподаватель × группа», а часы
+ * разнесены по колонкам «Лек. I полугодие», «Практ. I полугодие», «Лек. II полугодие»…
+ * Вид занятия и полугодие тогда записаны не в ячейке, а в шапке колонки. Если одно поле
+ * сопоставлено нескольким колонкам, каждая из них даёт из строки отдельную запись, а
+ * недостающие признаки берутся из `constants` колонки. Пустая ячейка и ноль в такой
+ * колонке означают «записи нет»: иначе каждая строка рождала бы записи без часов.
+ *
+ * `contexts[i]` — значения из строк-заголовков блоков для `rows[i]` (applyBlockHeaders);
+ * непустая ячейка самой строки важнее контекста, признак колонки-значения важнее обоих.
+ */
+export function mapToEntity(rows: Grid, columns: ColumnMapping[], contexts?: Record<string, Cell>[]): Record<string, Cell>[] {
+  const unpivot = unpivotFields(columns)
+  const base = columns.filter((c) => !unpivot.has(c.field))
+  const values = columns.filter((c) => unpivot.has(c.field))
+
+  const result: Record<string, Cell>[] = []
+  rows.forEach((row, i) => {
+    const own = Object.fromEntries(base.map((c) => [c.field, row[c.columnIndex] ?? null])) as Record<string, Cell>
+    const record: Record<string, Cell> = { ...(contexts?.[i] ?? {}) }
+    for (const [field, value] of Object.entries(own)) {
+      if (cellText(value) !== '' || !(field in record)) record[field] = value
+    }
+
+    const hasOwn = Object.values(own).some((v) => cellText(v) !== '')
+    if (values.length === 0) {
+      if (hasOwn) result.push(record)
+      return
+    }
+    // Строка, где заполнены только колонки-значения, — общий итог листа без подписи
+    // («8298» под таблицей): без этой проверки он стал бы записью с контекстом последнего блока.
+    if (base.length > 0 && !hasOwn) return
+    for (const c of values) {
+      const value = row[c.columnIndex] ?? null
+      if (cellText(value) === '' || cellNumber(value) === 0) continue
+      result.push({ ...record, ...(c.constants ?? {}), [c.field]: value })
+    }
+  })
+  return result
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────
+// Строки-заголовки блоков
+
+export interface BlockHeaderRule {
+  /** Колонка-признак: по её значению строка узнаётся как заголовок блока. */
+  columnIndex: number
+  /** Регулярное выражение без учёта регистра; пустая строка — «любое непустое значение». */
+  pattern: string
+  /** Поле записи, которое заголовок задаёт всем строкам блока… */
+  field: string
+  /** …и колонка заголовка, из которой берётся значение. */
+  sourceColumnIndex: number
+}
+
+export interface BlockHeaderResult {
+  dataRows: Grid
+  /** Контекст блока для каждой строки `dataRows`, в том же порядке. */
+  contexts: Record<string, Cell>[]
+  headerRows: Grid
+}
+
+/**
+ * Строки-заголовки блоков (§3.8a): в годовой нагрузке дисциплина и преподаватель стоят не
+ * в своих колонках, а отдельными строками над блоком групп — «1 | Хирургия», затем
+ * «Янхаева З.», затем строки групп с пустой ячейкой. Причём дисциплина лежит в той же
+ * колонке, что у строк данных группа, поэтому «пустая ячейка = значение выше» здесь
+ * бессильно: нужно сначала узнать строку как заголовок, а значение взять из её колонки.
+ *
+ * Строка-заголовок в данные не попадает (в ней итоги блока, а не нагрузка). Правила —
+ * уровни иерархии и приоритет в порядке списка: заголовок внешнего уровня сбрасывает
+ * значения вложенных, иначе первая строка нового цикла унаследовала бы преподавателя прошлого.
+ */
+export function applyBlockHeaders(rows: Grid, rules: BlockHeaderRule[]): BlockHeaderResult {
+  const compiled = rules.map((r) => ({ ...r, re: r.pattern.trim() === '' ? null : new RegExp(r.pattern, 'i') }))
+  const dataRows: Grid = []
+  const contexts: Record<string, Cell>[] = []
+  const headerRows: Grid = []
+  const context = new Map<number, Cell>()
+
+  for (const row of rows) {
+    // Срабатывает первое подходящее условие: «число» в колонке цикла подошло бы и под
+    // «любое непустое» преподавателя, и номер цикла стал бы преподавателем. Правила с тем
+    // же условием срабатывают вместе — так одна строка-заголовок задаёт несколько полей.
+    const first = compiled.find((rule) => {
+      const text = cellText(row[rule.columnIndex] ?? null)
+      return text !== '' && (rule.re == null || rule.re.test(text))
+    })
+    const matched = first
+      ? compiled.map((rule, level) => ({ rule, level })).filter(({ rule }) => rule.columnIndex === first.columnIndex && rule.pattern === first.pattern)
+      : []
+    if (matched.length === 0) {
+      dataRows.push(row)
+      const ctx: Record<string, Cell> = {}
+      for (const [level, rule] of compiled.entries()) {
+        if (context.has(level)) ctx[rule.field] = context.get(level) ?? null
+      }
+      contexts.push(ctx)
+      continue
+    }
+    headerRows.push(row)
+    const outermost = Math.min(...matched.map((m) => m.level))
+    for (const level of [...context.keys()]) if (level > outermost) context.delete(level)
+    for (const { rule, level } of matched) {
+      const value = row[rule.sourceColumnIndex] ?? null
+      context.set(level, typeof value === 'string' ? value.trim() : value)
+    }
+  }
+  return { dataRows, contexts, headerRows }
+}
+
+/**
+ * Подпись колонки из шапки самого файла. Без неё на шаге 4 колонки различались только
+ * буквой, и сопоставлять приходилось вслепую. Шапка бывает многоуровневой («Нагрузка /
+ * Лек. / I полугодие»), и каждый уровень значим: вид занятия в одной строке, полугодие
+ * в другой. Берём все уровни сплошного блока строк прямо над данными — заголовок листа
+ * («Годовая нагрузка на …») отделён от шапки пустой строкой и в подпись не попадает.
+ */
+export function columnHeaderHints(grid: Grid, dataStartRow: number, columnCount: number): string[] {
+  const above = grid.slice(0, Math.max(0, dataStartRow - 1))
+  let top = above.length
+  while (top > 0 && (above[top - 1] ?? []).some((cell) => cellText(cell) !== '')) top--
+  const block = above.slice(top)
+  return Array.from({ length: columnCount }, (_, c) => {
+    const levels: string[] = []
+    for (const row of block) {
+      const text = cellText(row[c] ?? null)
+      if (text !== '' && !levels.includes(text)) levels.push(text)
+    }
+    return levels.join(' / ')
+  })
+}
+
+/** Поля, которые получат значение: из колонки, из признака колонки-значения или из заголовка блока. */
+export function coveredFields(columns: ColumnMapping[], rules: BlockHeaderRule[]): Set<string> {
+  const unpivot = unpivotFields(columns)
+  const covered = new Set<string>([...columns.map((c) => c.field), ...rules.map((r) => r.field)])
+  const valueColumns = columns.filter((c) => unpivot.has(c.field))
+  // Признак засчитывается, только если задан у каждой колонки-значения: иначе часть
+  // записей уйдёт без него и будет отброшена при применении.
+  if (valueColumns.length > 0) {
+    const keys = new Set(valueColumns.flatMap((c) => Object.keys(c.constants ?? {})))
+    for (const key of keys) {
+      if (valueColumns.every((c) => cellText(c.constants?.[key] ?? null) !== '')) covered.add(key)
+    }
+  }
+  return covered
 }
 
 export { cellNumber, cellText }
@@ -324,11 +482,55 @@ export function parseIsoDate(cell: Cell): string | null {
  * сравнение с «Фамилия Имя» находило только первый вариант.
  */
 export function matchesPersonName(cell: Cell, lastName: string, firstName: string): boolean {
-  const parts = normalizeKey(cellText(cell)).split(' ').filter((p) => p !== '')
-  if (parts.length < 2) return false
-  if (parts[0] !== normalizeKey(lastName)) return false
+  const parts = personNameTokens(cellText(cell))
+  const surname = personNameTokens(lastName)
+  if (surname.length === 0 || parts.length <= surname.length) return false
+  // Фамилия бывает из нескольких слов: кыргызские «Омуркул кызы», «Закир уулу» в файле
+  // сокращают до «Омуркул к. К.» — сравниваем столько слов, сколько их в справочнике.
+  // Частицу узнаём только внутри фамилии: в «Иванова К. Т.» «К.» — инициал имени.
+  if (surname.some((s, i) => canonicalNamePart(parts[i]!) !== canonicalNamePart(s))) return false
 
-  const given = normalizeKey(firstName)
-  const second = parts[1]!.replace(/\.$/, '')
-  return second === given || (second.length === 1 && given.startsWith(second))
+  const given = normalizeKey(firstName).replace(/\.$/, '')
+  const token = parts[surname.length]!
+  // «Ж.», «З.Д.», «М.Н» — инициалы: имя узнаётся по первой букве. Раньше «М.Н» без
+  // финальной точки не считался инициалом, и преподаватель «не находился».
+  if (token.includes('.') || token.length === 1) return given.startsWith(token[0]!)
+  return token === given
+}
+
+const NAME_PARTICLES: Record<string, string> = { 'к.': 'кызы', 'у.': 'уулу' }
+
+function canonicalNamePart(token: string): string {
+  return NAME_PARTICLES[token] ?? token
+}
+
+function personNameTokens(text: string): string[] {
+  return normalizeKey(text).split(' ').filter((p) => p !== '')
+}
+
+/** Полугодие из ячейки или признака колонки: «I», «II», «1», «2 полугодие», «II сем». */
+export function parseHalfYear(cell: Cell): 1 | 2 | null {
+  const text = normalizeKey(cellText(cell))
+  const m = /^(ii|i|1|2)(\s|$|\.)/.exec(text)
+  if (!m) return null
+  return m[1] === 'ii' || m[1] === '2' ? 2 : 1
+}
+
+/**
+ * Подсказка признаков колонки-значения по её шапке («Нагрузка / Лек. / I полугодие»):
+ * мастер подставляет их, завуч проверяет и правит. Только предзаполнение — то, что
+ * завуч оставил, применение проверит тем же parseEnum/parseHalfYear.
+ */
+export function guessColumnConstants(headerText: string): { lessonKind?: string; halfYear?: string } {
+  const guess: { lessonKind?: string; halfYear?: string } = {}
+  for (const part of headerText.split(/\s*\/\s*/)) {
+    const first = part.split(',')[0] ?? ''
+    if (guess.lessonKind == null && parseEnum(first, ['theory', 'practice', 'seminar', 'lab'], LESSON_KIND_SYNONYMS) != null) {
+      guess.lessonKind = first.trim()
+    }
+    // Номер полугодия ищем в любом месте шапки: «Кол-во часов I полугодие».
+    const half = /(?:^|\s)(ii|i|1|2)\s*(полугод|сем)/i.exec(part)
+    if (guess.halfYear == null && half) guess.halfYear = half[1]!.toUpperCase() === 'II' || half[1] === '2' ? 'II' : 'I'
+  }
+  return guess
 }

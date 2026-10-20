@@ -89,6 +89,18 @@ describe('применение размеченных строк импорта 
     expect(rows.some((r) => r.hoursPlanned === 10)).toBe(true)
   })
 
+  it('не угадывает семестр по нераспознанному полугодию и по полугодию без семестра в году', () => {
+    ctx.db.insert(schema.teacherQualification).values({ teacherId: world.teacherId, disciplineId: world.disciplineId, validFrom: '2020-01-01' }).run()
+    const row = { teacherName: 'Иванова Т', groupName: '11 СД', disciplineName: 'Анатомия', lessonKind: 'theory', hoursPlanned: 10 }
+
+    const result = applyTeachingLoadRows(ctx.db, world.semesterId, [{ ...row, halfYear: 'III' }, { ...row, halfYear: 'II' }], '2026-09-01')
+    expect(result.created).toBe(0)
+    expect(result.skipped.map((s) => s.reason)).toEqual([
+      expect.stringContaining('полугодие «III» не распознано'),
+      expect.stringContaining('нет семестра II полугодия'),
+    ])
+  })
+
   it('пропускает нагрузку без действующей квалификации преподавателя, не роняя весь импорт', () => {
     ctx.db.delete(schema.teachingLoad).where(eq(schema.teachingLoad.id, world.teachingLoadId)).run()
 

@@ -1,17 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Curriculum, ImportApplyResult, ImportProfile, SheetInfo } from '../../../../shared/ipc/contract'
 import {
+  applyBlockHeaders,
   applyContextInheritance,
   collectDiscrepancies,
+  columnHeaderHints,
+  coveredFields,
   filterServiceRows,
+  guessColumnConstants,
   mapToEntity,
   reconcileTotals,
   resolveDiscrepancies,
   TARGET_SCHEMAS,
+  unpivotFields,
+  type BlockHeaderRule,
   type Cell,
   type Grid,
   type TargetEntity,
 } from '../../../../shared/import/engine'
+import { IMPORT_PRESETS, type ColumnConfig, type SavedMapping } from '../../../../shared/import/presets'
 import { api } from '../../api/client'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { ruCommon } from '../../ui/locale'
@@ -34,10 +41,26 @@ function cellText(cell: Cell): string {
   return cell == null ? '' : String(cell)
 }
 
-interface ColumnConfig {
-  field: string
-  inherit: boolean
+/**
+ * Буква колонки как в Excel. Мастер подписывал колонки «Колонка 1…35», а завуч видит в
+ * файле A, B, C — при пустой колонке A «Колонка 2» оказывалась B, и смещение считали в уме.
+ */
+function columnLetter(index: number): string {
+  let n = index + 1
+  let letters = ''
+  while (n > 0) {
+    const m = (n - 1) % 26
+    letters = String.fromCharCode(65 + m) + letters
+    n = Math.floor((n - 1) / 26)
+  }
+  return letters
 }
+
+/** Готовые условия строки-заголовка: завучу не нужно писать регулярные выражения руками. */
+const HEADER_CONDITIONS = [
+  { pattern: '^\\d+$', label: 'число (номер цикла, раздела)' },
+  { pattern: '', label: 'любое непустое значение' },
+] as const
 
 /**
  * Универсальный мастер импорта (§3.8): файл → лист → область данных → сопоставление
@@ -54,6 +77,7 @@ export function ImportWizardPage() {
 
   const [profiles, setProfiles] = useState<ImportProfile[]>([])
   const [profileId, setProfileId] = useState<number | ''>('')
+  const [presetKey, setPresetKey] = useState('')
   const [profileName, setProfileName] = useState('')
 
   const [sheets, setSheets] = useState<SheetInfo[]>([])
@@ -67,6 +91,11 @@ export function ImportWizardPage() {
 
   const [columns, setColumns] = useState<ColumnConfig[]>([])
   const [servicePattern, setServicePattern] = useState('итого|всего')
+  const [headerRules, setHeaderRules] = useState<BlockHeaderRule[]>([])
+  // Правила, где завуч выбрал «своё выражение». Из самого шаблона режим не вывести: пока
+  // выражение совпадает с готовым условием («^\d+$»), список возвращался на «число», и
+  // поле для выражения не появлялось.
+  const [customHeaderRules, setCustomHeaderRules] = useState<Set<number>>(new Set())
 
   const [discrepancyKeyCol, setDiscrepancyKeyCol] = useState<number | ''>('')
   const [discrepancyValueCol, setDiscrepancyValueCol] = useState<number | ''>('')
@@ -92,6 +121,8 @@ export function ImportWizardPage() {
   }, [targetEntity])
 
   const selectedProfile = profileId === '' ? null : (profiles.find((p) => p.id === profileId) ?? null)
+  const presets = IMPORT_PRESETS.filter((p) => p.targetEntity === targetEntity)
+  const selectedPreset = presets.find((p) => p.key === presetKey) ?? null
   const fields = TARGET_SCHEMAS[targetEntity]
   // По самой широкой строке, а не по первой: у реальных файлов верхние строки — заголовок
   // в объединённых ячейках, и по нему колонок насчитывалось меньше, чем в данных.
@@ -101,7 +132,9 @@ export function ImportWizardPage() {
     setSheets([])
     setSheetName(null)
     setGrid(null)
-    setColumns([])
+    // Выбранный профиль описывает, как читать файл, — он переживает смену файла; без
+    // профиля прежняя разметка к новому файлу отношения не имеет.
+    if (profileId === '' && presetKey === '') setColumns([])
     setApplyResult(null)
   }
 
@@ -117,15 +150,27 @@ export function ImportWizardPage() {
     else notifyError(sheetsRes.error.message)
   }
 
+  function applyMapping(saved: SavedMapping) {
+    setDataStartRow(saved.dataStartRow)
+    setDataEndRow(saved.dataEndRow ?? '')
+    // Сопоставление короче листа (готовый профиль описывает только нужные колонки) —
+    // добиваем пустыми, иначе правка колонки за его пределами терялась бы.
+    const width = Math.max(saved.columns.length, columnCount)
+    setColumns(Array.from({ length: width }, (_, i) => saved.columns[i] ?? { field: '', inherit: false }))
+    setServicePattern(saved.servicePattern)
+    // Профили до строк-заголовков и проверки расхождений их не хранили — это не ошибка.
+    setHeaderRules(saved.headerRules ?? [])
+    setCustomHeaderRules(new Set())
+    setDiscrepancyKeyCol(saved.discrepancy?.keyColumn ?? '')
+    setDiscrepancyValueCol(saved.discrepancy?.valueColumn ?? '')
+    setDiscrepancyResolutions({})
+  }
+
   function applyProfile(id: number) {
     const p = profiles.find((x) => x.id === id)
     if (!p) return
     try {
-      const saved = JSON.parse(p.mappingJson) as { dataStartRow: number; dataEndRow: number | null; columns: ColumnConfig[]; servicePattern: string }
-      setDataStartRow(saved.dataStartRow)
-      setDataEndRow(saved.dataEndRow ?? '')
-      setColumns(saved.columns)
-      setServicePattern(saved.servicePattern)
+      applyMapping(JSON.parse(p.mappingJson) as SavedMapping)
     } catch {
       notifyError('Профиль повреждён — сопоставление не загружено')
     }
@@ -180,33 +225,54 @@ export function ImportWizardPage() {
     }
   }, [rangedGrid, servicePattern])
   const { controlRows, patternError } = serviceFilter
-  const dataRows = useMemo(
+  const inheritedRows = useMemo(
     () => applyContextInheritance(serviceFilter.dataRows, inheritColumnIndexes),
     [serviceFilter, inheritColumnIndexes],
   )
+  // Правило с недописанным выражением не применяется, а подсвечивается — как и правило
+  // служебных строк выше: исключение в фазе рендера унесло бы все настройки мастера.
+  const headerRuleErrors = useMemo(
+    () =>
+      headerRules.map((r) => {
+        try {
+          new RegExp(r.pattern, 'i')
+          return null
+        } catch (error) {
+          return error instanceof Error ? error.message : 'некорректное выражение'
+        }
+      }),
+    [headerRules],
+  )
+  const blocks = useMemo(
+    () => applyBlockHeaders(inheritedRows, headerRules.filter((r, i) => r.field !== '' && headerRuleErrors[i] == null)),
+    [inheritedRows, headerRules, headerRuleErrors],
+  )
+  const dataRows = blocks.dataRows
 
+  const headerHints = useMemo(() => (grid ? columnHeaderHints(grid, dataStartRow, columnCount) : []), [grid, dataStartRow, columnCount])
+
+  const columnLabel = (c: number): string => (headerHints[c] ? `${columnLetter(c)} — ${headerHints[c]}` : columnLetter(c))
+
+  const columnMapping = useMemo(
+    () => columns.map((c, i) => ({ columnIndex: i, field: c.field, constants: c.constants })).filter((c) => c.field !== ''),
+    [columns],
+  )
+  const valueFields = useMemo(() => unpivotFields(columnMapping), [columnMapping])
+  const activeHeaderRules = useMemo(() => headerRules.filter((r) => r.field !== ''), [headerRules])
   /**
-   * Подпись колонки из шапки самого файла. Без неё на шаге 4 колонки называются
-   * «Колонка 1…13», а первая колонка листа в реальных файлах часто пустая (поле
-   * страницы) — завучу приходилось считать смещение в уме и сопоставлять вслепую.
-   * Берём последнее непустое значение выше строки данных: шапка бывает двухуровневой,
-   * и нижний уровень («Часы», «Код вида») точнее верхнего («Кол-во часов I полугодие»).
+   * Признаки, которые задаются у колонок-значений: поля сущности, не взятые ни из своей
+   * колонки, ни из строки-заголовка. Для нагрузки это обычно вид занятия и полугодие.
    */
-  const headerHints = useMemo(() => {
-    if (!grid) return []
-    const above = grid.slice(0, Math.max(0, dataStartRow - 1))
-    return Array.from({ length: columnCount }, (_, c) => {
-      for (let r = above.length - 1; r >= 0; r--) {
-        const text = cellText(above[r]?.[c] ?? null)
-        if (text !== '') return text
-      }
-      return ''
-    })
-  }, [grid, dataStartRow, columnCount])
-
-  const columnLabel = (c: number): string => (headerHints[c] ? `Колонка ${c + 1} — ${headerHints[c]}` : `Колонка ${c + 1}`)
-
-  const columnMapping = useMemo(() => columns.map((c, i) => ({ columnIndex: i, field: c.field })).filter((c) => c.field !== ''), [columns])
+  const constantFields = useMemo(
+    () =>
+      fields.filter(
+        (f) =>
+          !valueFields.has(f.field) &&
+          !columnMapping.some((c) => c.field === f.field) &&
+          !activeHeaderRules.some((r) => r.field === f.field),
+      ),
+    [fields, valueFields, columnMapping, activeHeaderRules],
+  )
   const numericFieldColumns = useMemo(
     () => columnMapping.filter((c) => dataRows.some((r) => typeof r[c.columnIndex] === 'number')).map((c) => c.columnIndex),
     [columnMapping, dataRows],
@@ -224,9 +290,54 @@ export function ImportWizardPage() {
     [dataRows, discrepancyKeyCol, discrepancyValueCol, discrepancyResolutions],
   )
 
-  const mappedRows = useMemo(() => mapToEntity(resolvedDataRows, columnMapping), [resolvedDataRows, columnMapping])
+  const mappedRows = useMemo(() => mapToEntity(resolvedDataRows, columnMapping, blocks.contexts), [resolvedDataRows, columnMapping, blocks])
 
-  const missingRequiredFields = fields.filter((f) => f.required && !columns.some((c) => c.field === f.field))
+  const covered = coveredFields(columnMapping, activeHeaderRules)
+  const missingRequiredFields = fields.filter((f) => f.required && !covered.has(f.field))
+  const halfYearCovered = covered.has('halfYear')
+
+  /**
+   * Смена поля колонки. Когда поле получает вторую колонку, обе становятся колонками-
+   * значениями (mapToEntity), и мастер сразу подставляет им признаки из шапки — вид
+   * занятия и полугодие, которые в «широкой» таблице записаны именно там.
+   */
+  function setColumnField(index: number, field: string) {
+    setColumns((prev) => {
+      const next = prev.map((col, i) => (i === index ? { ...col, field } : col))
+      const counts = new Map<string, number>()
+      for (const col of next) if (col.field !== '') counts.set(col.field, (counts.get(col.field) ?? 0) + 1)
+      return next.map((col, i) => {
+        if (col.field === '' || (counts.get(col.field) ?? 0) < 2 || col.constants != null) return col
+        const guess = guessColumnConstants(headerHints[i] ?? '')
+        return { ...col, constants: Object.fromEntries(Object.entries(guess).filter(([, v]) => v != null)) as Record<string, string> }
+      })
+    })
+  }
+
+  function setColumnConstant(index: number, key: string, value: string) {
+    setColumns((prev) => prev.map((col, i) => (i === index ? { ...col, constants: { ...(col.constants ?? {}), [key]: value } } : col)))
+  }
+
+  function updateHeaderRule(index: number, patch: Partial<BlockHeaderRule>) {
+    setHeaderRules((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)))
+  }
+
+  function setHeaderRuleCondition(index: number, value: string) {
+    setCustomHeaderRules((prev) => {
+      const next = new Set(prev)
+      if (value === 'custom') next.add(index)
+      else next.delete(index)
+      return next
+    })
+    if (value !== 'custom') updateHeaderRule(index, { pattern: value })
+    else if (headerRules[index]?.pattern === '') updateHeaderRule(index, { pattern: '.+' })
+  }
+
+  function removeHeaderRule(index: number) {
+    setHeaderRules((prev) => prev.filter((_, j) => j !== index))
+    // Номера правил ниже удалённого сдвигаются — режим «своё выражение» сдвигается вместе с ними.
+    setCustomHeaderRules((prev) => new Set([...prev].filter((j) => j !== index).map((j) => (j > index ? j - 1 : j))))
+  }
 
   const canApply =
     missingRequiredFields.length === 0 &&
@@ -245,7 +356,15 @@ export function ImportWizardPage() {
     if (update && !selected) return
     const name = profileName.trim() === '' ? (selected?.name ?? '') : profileName.trim()
     if (name === '') return
-    const mappingJson = JSON.stringify({ dataStartRow, dataEndRow: dataEndRow === '' ? null : dataEndRow, columns, servicePattern })
+    const saved: SavedMapping = {
+      dataStartRow,
+      dataEndRow: dataEndRow === '' ? null : dataEndRow,
+      columns,
+      servicePattern,
+      headerRules,
+      discrepancy: discrepancyKeyCol !== '' && discrepancyValueCol !== '' ? { keyColumn: discrepancyKeyCol, valueColumn: discrepancyValueCol } : undefined,
+    }
+    const mappingJson = JSON.stringify(saved)
     const res = await api.invoke('import:profiles:save', {
       id: selected?.id,
       rowVersion: selected?.rowVersion,
@@ -327,7 +446,10 @@ export function ImportWizardPage() {
               onChange={(v) => {
                 setTargetEntity(v as TargetEntity)
                 setColumns((prev) => prev.map(() => ({ field: '', inherit: false })))
+                setHeaderRules([])
+                setCustomHeaderRules(new Set())
                 setProfileId('')
+                setPresetKey('')
               }}
             >
               {Object.entries(TARGET_LABEL).map(([value, label]) => (
@@ -337,35 +459,52 @@ export function ImportWizardPage() {
               ))}
             </Select>
           </div>
-          {profiles.length > 0 && (
+          {(profiles.length > 0 || presets.length > 0) && (
             <div className="form-field">
               <label htmlFor="import-profile">Профиль сопоставления (§3.8d)</label>
               <div className="btn-group">
                 <Select
                   id="import-profile"
-                  value={profileId}
+                  value={profileId !== '' ? String(profileId) : presetKey !== '' ? `preset:${presetKey}` : ''}
                   onChange={(v) => {
+                    if (v.startsWith('preset:')) {
+                      const preset = presets.find((p) => `preset:${p.key}` === v)
+                      setProfileId('')
+                      setPresetKey(preset?.key ?? '')
+                      if (preset) applyMapping(preset.mapping)
+                      return
+                    }
                     const id = v === '' ? '' : Number(v)
+                    setPresetKey('')
                     setProfileId(id)
                     if (id !== '') applyProfile(id)
                   }}
                 >
                   <option value="">Без профиля — настроить заново</option>
+                  {presets.map((p) => (
+                    <option key={p.key} value={`preset:${p.key}`}>
+                      Готовый: {p.name}
+                    </option>
+                  ))}
                   {profiles.map((p) => (
-                    <option key={p.id} value={p.id}>
+                    <option key={p.id} value={String(p.id)}>
                       {p.name}
                     </option>
                   ))}
                 </Select>
-                <button
-                  type="button"
-                  className="btn btn-danger"
-                  disabled={selectedProfile == null}
-                  onClick={() => selectedProfile && setPendingProfileDelete(selectedProfile)}
-                >
-                  {ruCommon.delete}
-                </button>
+                {/* Готовый профиль поставляется с программой — удалять нечего. */}
+                {!selectedPreset && (
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    disabled={selectedProfile == null}
+                    onClick={() => selectedProfile && setPendingProfileDelete(selectedProfile)}
+                  >
+                    {ruCommon.delete}
+                  </button>
+                )}
               </div>
+              {selectedPreset && <span className="history-empty">{selectedPreset.description}</span>}
             </div>
           )}
           <div className="dialog-actions">
@@ -418,6 +557,14 @@ export function ImportWizardPage() {
           </div>
           <div className="data-table-wrap" style={{ maxHeight: 360, overflow: 'auto' }}>
             <table className="data-table">
+              <thead>
+                <tr>
+                  <th />
+                  {Array.from({ length: columnCount }, (_, c) => (
+                    <th key={c}>{columnLetter(c)}</th>
+                  ))}
+                </tr>
+              </thead>
               <tbody>
                 {grid.slice(0, 60).map((row, idx) => {
                   const rowNo = idx + 1
@@ -466,7 +613,7 @@ export function ImportWizardPage() {
                   <th>#</th>
                   {Array.from({ length: columnCount }, (_, c) => (
                     <th key={c}>
-                      Колонка {c + 1}
+                      {columnLetter(c)}
                       {headerHints[c] ? <div className="history-empty">{headerHints[c]}</div> : null}
                     </th>
                   ))}
@@ -475,12 +622,7 @@ export function ImportWizardPage() {
                   <th>Поле</th>
                   {Array.from({ length: columnCount }, (_, c) => (
                     <th key={c}>
-                      <Select
-                        value={columns[c]?.field ?? ''}
-                        onChange={(v) =>
-                          setColumns((prev) => prev.map((col, i) => (i === c ? { ...col, field: v } : col)))
-                        }
-                      >
+                      <Select aria-label={`Поле колонки ${columnLetter(c)}`} value={columns[c]?.field ?? ''} onChange={(v) => setColumnField(c, v)}>
                         <option value="">—</option>
                         {fields.map((f) => (
                           <option key={f.field} value={f.field}>
@@ -491,6 +633,27 @@ export function ImportWizardPage() {
                     </th>
                   ))}
                 </tr>
+                {valueFields.size > 0 &&
+                  constantFields.map((f) => (
+                    <tr key={f.field}>
+                      <th>{f.labelRu}</th>
+                      {Array.from({ length: columnCount }, (_, c) => {
+                        const col = columns[c]
+                        return (
+                          <th key={c}>
+                            {col && valueFields.has(col.field) ? (
+                              <input
+                                type="text"
+                                aria-label={`${f.labelRu} для колонки ${columnLetter(c)}`}
+                                value={col.constants?.[f.field] ?? ''}
+                                onChange={(e) => setColumnConstant(c, f.field, e.target.value)}
+                              />
+                            ) : null}
+                          </th>
+                        )
+                      })}
+                    </tr>
+                  ))}
                 <tr>
                   <th>Наследовать (§3.8a)</th>
                   {Array.from({ length: columnCount }, (_, c) => (
@@ -518,6 +681,80 @@ export function ImportWizardPage() {
               </tbody>
             </table>
           </div>
+
+          {valueFields.size > 0 && (
+            <p className="history-empty">
+              Поле «{fields.filter((f) => valueFields.has(f.field)).map((f) => f.labelRu).join('», «')}» сопоставлено нескольким колонкам: каждая из них
+              даёт из строки отдельную запись, а её признаки (строки таблицы выше) подставлены из шапки — проверьте их. Пустая ячейка или ноль — записи нет.
+            </p>
+          )}
+
+          <h4>Строки-заголовки блоков (§3.8a)</h4>
+          <p className="history-empty">
+            Если преподаватель или дисциплина записаны отдельной строкой над блоком групп, опишите, как узнать такую строку. Она не станет записью,
+            а её значение получат все строки блока ниже. Порядок правил — уровни: правило выше сбрасывает значения правил ниже.
+          </p>
+          {headerRules.map((rule, i) => {
+            const custom = customHeaderRules.has(i) || !HEADER_CONDITIONS.some((h) => h.pattern === rule.pattern)
+            return (
+              <div key={i} className="subpanel-row">
+                <span>Если в колонке</span>
+                <Select aria-label="Колонка-признак" value={rule.columnIndex} onChange={(v) => updateHeaderRule(i, { columnIndex: Number(v) })}>
+                  {Array.from({ length: columnCount }, (_, c) => (
+                    <option key={c} value={c}>
+                      {columnLabel(c)}
+                    </option>
+                  ))}
+                </Select>
+                <Select aria-label="Условие" value={custom ? 'custom' : rule.pattern} onChange={(v) => setHeaderRuleCondition(i, v)}>
+                  {HEADER_CONDITIONS.map((h) => (
+                    <option key={h.label} value={h.pattern}>
+                      {h.label}
+                    </option>
+                  ))}
+                  <option value="custom">совпадает с выражением…</option>
+                </Select>
+                {custom && (
+                  <input
+                    type="text"
+                    aria-label="Регулярное выражение"
+                    value={rule.pattern}
+                    onChange={(e) => updateHeaderRule(i, { pattern: e.target.value })}
+                    aria-invalid={headerRuleErrors[i] != null}
+                  />
+                )}
+                <span>, то</span>
+                <Select aria-label="Поле из заголовка" value={rule.field} onChange={(v) => updateHeaderRule(i, { field: v })}>
+                  <option value="">поле…</option>
+                  {fields.map((f) => (
+                    <option key={f.field} value={f.field}>
+                      {f.labelRu}
+                    </option>
+                  ))}
+                </Select>
+                <span>берётся из колонки</span>
+                <Select aria-label="Колонка значения" value={rule.sourceColumnIndex} onChange={(v) => updateHeaderRule(i, { sourceColumnIndex: Number(v) })}>
+                  {Array.from({ length: columnCount }, (_, c) => (
+                    <option key={c} value={c}>
+                      {columnLabel(c)}
+                    </option>
+                  ))}
+                </Select>
+                <button type="button" className="btn btn-danger" onClick={() => removeHeaderRule(i)}>
+                  {ruCommon.delete}
+                </button>
+                {headerRuleErrors[i] && <span className="form-error">Правило не применено: {headerRuleErrors[i]}</span>}
+              </div>
+            )
+          })}
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setHeaderRules((prev) => [...prev, { columnIndex: 0, pattern: HEADER_CONDITIONS[0].pattern, field: '', sourceColumnIndex: 0 }])}
+          >
+            + Строка-заголовок
+          </button>
+          {blocks.headerRows.length > 0 && <p className="history-empty">Строк-заголовков найдено: {blocks.headerRows.length}</p>}
 
           <div className="form-field" style={{ marginTop: 12 }}>
             <label>Правило служебных строк «Итого/ВСЕГО» (§3.8b, регулярное выражение)</label>
@@ -560,7 +797,9 @@ export function ImportWizardPage() {
         <div className="card">
           <h3>5. Предпросмотр и применение</h3>
 
-          {reconciliation.length > 0 && (
+          {/* Без строк «Итого» сверять не с чем: каждая колонка показывалась «расхождением с 0»,
+              хотя в годовой нагрузке итоги стоят в строках-заголовках, а не в строках «Итого». */}
+          {reconciliation.length > 0 && controlRows.length > 0 && (
             <>
               <h4>Сверка контрольных сумм</h4>
               <ul>
@@ -641,6 +880,11 @@ export function ImportWizardPage() {
                   </option>
                 ))}
               </Select>
+              {halfYearCovered && (
+                <span className="history-empty">
+                  У записей указано полугодие — каждая уйдёт в семестр своего полугодия того же учебного года, что и выбранный.
+                </span>
+              )}
             </div>
           )}
           <div className="form-field">
@@ -651,6 +895,33 @@ export function ImportWizardPage() {
           <p>
             <strong>Будет создано записей: {mappedRows.length}</strong>
           </p>
+          {mappedRows.length > 0 && (
+            <div className="data-table-wrap" style={{ maxHeight: 320, overflow: 'auto' }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    {fields
+                      .filter((f) => covered.has(f.field))
+                      .map((f) => (
+                        <th key={f.field}>{f.labelRu}</th>
+                      ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {mappedRows.slice(0, 30).map((r, i) => (
+                    <tr key={i}>
+                      {fields
+                        .filter((f) => covered.has(f.field))
+                        .map((f) => (
+                          <td key={f.field}>{cellText(r[f.field] ?? null)}</td>
+                        ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {mappedRows.length > 30 && <p className="history-empty">Показаны первые 30 записей из {mappedRows.length}.</p>}
 
           <div className="form-field">
             <label>Сохранить сопоставление как профиль (§3.8d)</label>

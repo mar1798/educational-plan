@@ -15,6 +15,7 @@ import {
   cellText,
   matchesPersonName,
   parseEnum,
+  parseHalfYear,
   parseIsoDate,
   type Cell,
 } from '../../shared/import/engine'
@@ -241,6 +242,10 @@ const LESSON_KINDS = ['theory', 'practice', 'seminar', 'lab'] as const
  * Строка нагрузки из файла резолвится в конкретную curriculum_row через тот же
  * расчёт «курс + полугодие → семестр плана» (§1.1 п.38), что и loadBalanceByGroup —
  * группа уже знает свою специальность, год набора и курс, семестр берётся из семестра импорта.
+ *
+ * Если у строки указано полугодие, она уходит в семестр с этим номером того же учебного
+ * года: годовая нагрузка держит оба полугодия в одной строке файла, и без этого её
+ * пришлось бы загружать дважды, каждый раз отбрасывая половину строк.
  */
 export function applyTeachingLoadRows(
   tx: DbLike,
@@ -252,6 +257,7 @@ export function applyTeachingLoadRows(
   const sem = tx.select().from(semester).where(eq(semester.id, semesterId)).get()
   if (!sem) throw new NotFoundError('semester', semesterId)
 
+  const yearSemesters = tx.select().from(semester).where(eq(semester.academicYearId, sem.academicYearId)).all()
   const teachers = tx.select().from(teacher).all()
   const groups = tx.select().from(studyGroup).all()
   const disciplines = tx.select().from(discipline).all()
@@ -259,14 +265,31 @@ export function applyTeachingLoadRows(
     tx
       .select()
       .from(teachingLoad)
-      .where(and(eq(teachingLoad.semesterId, semesterId), isNull(teachingLoad.validTo)))
+      .where(isNull(teachingLoad.validTo))
       .all()
-      .map((l) => sameKey(l.curriculumRowId, l.teacherId, l.groupId, l.subgroupId, l.lessonKind)),
+      .map((l) => sameKey(l.semesterId, l.curriculumRowId, l.teacherId, l.groupId, l.subgroupId, l.lessonKind)),
   )
+  const seenInFile = new Set<string>()
   const skipped: ApplyResult['skipped'] = []
   let created = 0
 
   for (const row of rows) {
+    const halfYearText = cellText(row.halfYear ?? null)
+    let target = sem
+    if (halfYearText !== '') {
+      const halfYear = parseHalfYear(row.halfYear ?? null)
+      if (halfYear == null) {
+        skipped.push({ row, reason: `полугодие «${halfYearText}» не распознано (ожидается I или II)` })
+        continue
+      }
+      const found = yearSemesters.find((s) => s.no === halfYear)
+      if (!found) {
+        skipped.push({ row, reason: `в учебном году нет семестра ${halfYear === 1 ? 'I' : 'II'} полугодия — заведите его в календаре` })
+        continue
+      }
+      target = found
+    }
+
     const t = teachers.find((x) => matchesPersonName(row.teacherName ?? null, x.lastName, x.firstName))
     if (!t) {
       skipped.push({ row, reason: `преподаватель «${cellText(row.teacherName ?? null)}» не найден (ожидается «Фамилия Имя»)` })
@@ -295,7 +318,7 @@ export function applyTeachingLoadRows(
       continue
     }
 
-    const planSemesterNo = (g.course - 1) * 2 + sem.no
+    const planSemesterNo = (g.course - 1) * 2 + target.no
     const plan = tx
       .select()
       .from(curriculum)
@@ -325,18 +348,28 @@ export function applyTeachingLoadRows(
 
     // Ключ без подгруппы: импорт заводит нагрузку на группу целиком, и повторная заливка
     // того же файла иначе удваивала часы, а затем упиралась в недельный лимит группы.
-    const key = sameKey(planRow.id, t.id, g.id, null, lessonKind)
+    const key = sameKey(target.id, planRow.id, t.id, g.id, null, lessonKind)
+    if (seenInFile.has(key)) {
+      // В годовой нагрузке так записывают подгруппы: «СД-12» трижды у одного преподавателя.
+      // Нагрузка заводится на группу целиком, деление — схемой подгрупп в программе.
+      skipped.push({
+        row,
+        reason: `повтор в файле: ${t.lastName} ${t.firstName}, «${disciplineName}», группа «${g.name}» уже взята из строки выше — если это подгруппы, задайте деление в программе`,
+      })
+      continue
+    }
     if (seen.has(key)) {
       skipped.push({ row, reason: `у ${t.lastName} ${t.firstName} уже есть такая нагрузка по «${disciplineName}» в группе «${g.name}»` })
       continue
     }
     seen.add(key)
+    seenInFile.add(key)
 
     try {
       saveTeachingLoad(
         tx,
         {
-          semesterId,
+          semesterId: target.id,
           curriculumRowId: planRow.id,
           teacherId: t.id,
           groupId: g.id,
