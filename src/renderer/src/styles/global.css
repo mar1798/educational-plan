@@ -173,6 +173,16 @@ h3 {
   font-size: 14px;
 }
 
+/* Ссылка в виде кнопки (переход из «С чего начать»): без подчёркивания и синего цвета ссылки,
+   иначе рядом с настоящими кнопками она читалась как другой элемент. */
+a.btn {
+  text-decoration: none;
+}
+
+a.btn:not(.btn-primary):not(.btn-danger) {
+  color: var(--color-text);
+}
+
 .btn:hover {
   background: var(--color-bg);
 }
@@ -1268,4 +1278,73 @@ table.data-table {
   justify-content: flex-start;
 }
 
+/* «С чего начать»: шаги онбординга. Отметка — круг с номером, галочкой или «!»: статус
+   читается и цветом, и знаком, чтобы не зависеть от различения цветов. */
+.onboarding-shortcut p {
+  max-width: 72ch;
+}
+
+.onboarding-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.onboarding-step {
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  gap: 14px;
+  align-items: start;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.onboarding-step:last-child {
+  border-bottom: none;
+}
+
+.onboarding-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border-strong);
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.onboarding-step-done .onboarding-mark {
+  background: var(--color-success);
+  border-color: var(--color-success);
+  color: #fff;
+}
+
+.onboarding-step-review .onboarding-mark {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.onboarding-title {
+  font-weight: 600;
+}
+
+.onboarding-why {
+  margin-top: 2px;
+  max-width: 72ch;
+}
+
+.onboarding-summary {
+  margin-top: 4px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.onboarding-issue {
+  margin-top: 4px;
+  color: var(--color-danger);
+  font-size: 13px;
+}
 

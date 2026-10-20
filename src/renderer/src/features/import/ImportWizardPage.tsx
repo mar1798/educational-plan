@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import type { Curriculum, ImportApplyResult, ImportMissingReport, ImportProfile, SheetInfo } from '../../../../shared/ipc/contract'
 import {
   applyBlockHeaders,
@@ -71,13 +72,19 @@ const HEADER_CONDITIONS = [
 export function ImportWizardPage() {
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1)
 
+  // Ссылка из «С чего начать» (#/import?preset=annual-load) сразу выбирает готовый профиль:
+  // завуч не должен знать, что нагрузка — это «Куда импортировать → Нагрузка» плюс профиль.
+  const [searchParams] = useSearchParams()
+  const [initialPreset] = useState(() => IMPORT_PRESETS.find((p) => p.key === searchParams.get('preset')) ?? null)
+  const initialMapping = initialPreset?.mapping
+
   const [filePath, setFilePath] = useState<string | null>(null)
   const [fileName, setFileName] = useState<string | null>(null)
-  const [targetEntity, setTargetEntity] = useState<TargetEntity>('teacher')
+  const [targetEntity, setTargetEntity] = useState<TargetEntity>(initialPreset?.targetEntity ?? 'teacher')
 
   const [profiles, setProfiles] = useState<ImportProfile[]>([])
   const [profileId, setProfileId] = useState<number | ''>('')
-  const [presetKey, setPresetKey] = useState('')
+  const [presetKey, setPresetKey] = useState(initialPreset?.key ?? '')
   const [profileName, setProfileName] = useState('')
 
   const [sheets, setSheets] = useState<SheetInfo[]>([])
@@ -86,19 +93,19 @@ export function ImportWizardPage() {
   const [loadingGrid, setLoadingGrid] = useState(false)
   const sheetRequestRef = useRef(0)
 
-  const [dataStartRow, setDataStartRow] = useState(1)
-  const [dataEndRow, setDataEndRow] = useState<number | ''>('')
+  const [dataStartRow, setDataStartRow] = useState(initialMapping?.dataStartRow ?? 1)
+  const [dataEndRow, setDataEndRow] = useState<number | ''>(initialMapping?.dataEndRow ?? '')
 
-  const [columns, setColumns] = useState<ColumnConfig[]>([])
-  const [servicePattern, setServicePattern] = useState('итого|всего')
-  const [headerRules, setHeaderRules] = useState<BlockHeaderRule[]>([])
+  const [columns, setColumns] = useState<ColumnConfig[]>(initialMapping?.columns ?? [])
+  const [servicePattern, setServicePattern] = useState(initialMapping?.servicePattern ?? 'итого|всего')
+  const [headerRules, setHeaderRules] = useState<BlockHeaderRule[]>(initialMapping?.headerRules ?? [])
   // Правила, где завуч выбрал «своё выражение». Из самого шаблона режим не вывести: пока
   // выражение совпадает с готовым условием («^\d+$»), список возвращался на «число», и
   // поле для выражения не появлялось.
   const [customHeaderRules, setCustomHeaderRules] = useState<Set<number>>(new Set())
 
-  const [discrepancyKeyCol, setDiscrepancyKeyCol] = useState<number | ''>('')
-  const [discrepancyValueCol, setDiscrepancyValueCol] = useState<number | ''>('')
+  const [discrepancyKeyCol, setDiscrepancyKeyCol] = useState<number | ''>(initialMapping?.discrepancy?.keyColumn ?? '')
+  const [discrepancyValueCol, setDiscrepancyValueCol] = useState<number | ''>(initialMapping?.discrepancy?.valueColumn ?? '')
   const [discrepancyResolutions, setDiscrepancyResolutions] = useState<Record<string, string>>({})
 
   const [curricula, setCurricula] = useState<Curriculum[]>([])

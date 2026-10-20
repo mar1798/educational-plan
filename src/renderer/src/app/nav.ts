@@ -10,6 +10,10 @@ export interface NavSection {
 
 export const navSections: NavSection[] = [
   {
+    title: 'Начало',
+    items: [{ label: 'С чего начать', path: '/start' }],
+  },
+  {
     title: 'Справочники',
     items: [
       { label: 'Специальности', path: '/specialities' },

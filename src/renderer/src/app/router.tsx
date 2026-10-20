@@ -1,4 +1,4 @@
-import { createHashRouter, Navigate } from 'react-router-dom'
+import { createHashRouter } from 'react-router-dom'
 import { BuildingsPage } from '../features/buildings/BuildingsPage'
 import { AcademicYearsPage } from '../features/calendar/AcademicYearsPage'
 import { CalendarPeriodsPage } from '../features/calendar/CalendarPeriodsPage'
@@ -29,6 +29,7 @@ import { SubstitutionWizardPage } from '../features/substitutions/SubstitutionWi
 import { SystemPage } from '../features/system/SystemPage'
 import { TeachersPage } from '../features/teachers/TeachersPage'
 import { AppShell } from './AppShell'
+import { OnboardingPage, StartRedirect } from '../features/onboarding/OnboardingPage'
 
 // createHashRouter, а не BrowserRouter: собранный renderer грузится по file://,
 // обычная история браузера там не работает без сервера.
@@ -37,7 +38,8 @@ export const router = createHashRouter([
     path: '/',
     element: <AppShell />,
     children: [
-      { index: true, element: <Navigate to="/specialities" replace /> },
+      { index: true, element: <StartRedirect /> },
+      { path: 'start', element: <OnboardingPage /> },
       { path: 'specialities', element: <SpecialitiesPage /> },
       { path: 'cmc', element: <CmcPage /> },
       { path: 'buildings', element: <BuildingsPage /> },

@@ -522,6 +522,35 @@ export interface ImportCreateMissingResult {
   created: number
 }
 
+export type OnboardingStepKey =
+  | 'calendar'
+  | 'specialities'
+  | 'disciplines'
+  | 'groups'
+  | 'teachers'
+  | 'curricula'
+  | 'qualifications'
+  | 'load'
+  | 'rooms'
+  | 'pairGrid'
+  | 'schedule'
+
+/** `review` — шаг формально пройден значениями по умолчанию, но их стоит проверить. */
+export interface OnboardingStep {
+  key: OnboardingStepKey
+  status: 'done' | 'todo' | 'review'
+  /** Что уже есть: «групп: 12». */
+  summary: string
+  /** Что мешает: «у 3 групп нет учебного плана: СД-21, …». */
+  issue: string | null
+}
+
+export interface OnboardingStatus {
+  steps: OnboardingStep[]
+  /** Обязательные шаги пройдены — можно генерировать расписание. */
+  ready: boolean
+}
+
 // Замены (§этап 7, §1.1 п.22, п.29): мастер работает над материализованными `lesson`,
 // не над `template_entry` — это первый экран, показывающий занятия по конкретным датам.
 export interface TeacherLessonRow {
@@ -809,6 +838,9 @@ export interface IpcContract {
   // операция 'import', откатывается независимо от самого импорта.
   'import:preflight': { in: ImportPreflightInput; out: ImportMissingReport }
   'import:createMissing': { in: ImportPreflightInput; out: ImportCreateMissingResult }
+
+  // Экран «С чего начать»: готовность шагов считает main по данным БД.
+  'onboarding:status': { in: Record<string, never>; out: OnboardingStatus }
 
   // Экспорт расписания (§5.10-5.11): пользователь сам выбирает файл через showSaveDialog.
   'export:excel': { in: { templateId: number; kind: 'group' | 'teacher' | 'summary'; targetId?: number }; out: { path: string } | { cancelled: true } }

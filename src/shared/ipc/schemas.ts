@@ -643,6 +643,8 @@ export const importPreflightInput = z.object({
   validFrom: z.string().min(1, 'Укажите дату начала действия'),
 })
 
+export const onboardingStatusInput = z.object({})
+
 export const exportExcelInput = z.object({
   templateId: z.number().int().positive(),
   kind: z.enum(['group', 'teacher', 'summary']),

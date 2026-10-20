@@ -22,6 +22,7 @@ import { registerDivisionSchemesHandlers } from './ipc/division-schemes'
 import { registerGenerationHandlers } from './ipc/generation'
 import { registerGroupsHandlers } from './ipc/groups'
 import { registerImportHandlers } from './ipc/import'
+import { registerOnboardingHandlers } from './ipc/onboarding'
 import { registerOperationsHandlers } from './ipc/operations'
 import { registerPairGridHandlers } from './ipc/pair-grid'
 import { registerReportsHandlers } from './ipc/reports'
@@ -161,6 +162,7 @@ async function bootstrap() {
   registerGenerationHandlers(db, liveWindow)
   registerExportHandlers(db, liveWindow)
   registerImportHandlers({ db, getWindow: liveWindow })
+  registerOnboardingHandlers(db)
   registerSubstitutionsHandlers(db)
   registerReportsHandlers(db)
 
