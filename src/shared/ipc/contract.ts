@@ -188,6 +188,9 @@ export interface DivisionScheme {
   name: string
   partsCount: number
   isDefault: boolean
+  // Клиническая схема по порогам п. 44: 'auto' пересчитывается от численности, 'manual' —
+  // завуч поправил границы руками; NULL — обычная схема.
+  clinicalSplit: 'auto' | 'manual' | null
   validFrom: string
   validTo: string | null
   rowVersion: number
@@ -732,6 +735,7 @@ export interface IpcContract {
   }
   'divisionSchemes:close': { in: { id: number; rowVersion: number; validTo: string | null }; out: { ok: true } }
   'divisionSchemes:setDefault': { in: { id: number }; out: { ok: true } }
+  'divisionSchemes:resetClinical': { in: { id: number }; out: DivisionSchemeWithSubgroups }
   'divisionSchemes:delete': { in: { id: number }; out: { ok: true } }
 
   // Календарь (§2.8): дни материализуются на период семестра, дальше правятся вручную.

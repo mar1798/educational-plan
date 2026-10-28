@@ -105,6 +105,10 @@ export const divisionScheme = sqliteTable('division_scheme', {
   name: text('name').notNull(),
   partsCount: integer('parts_count').notNull(),
   isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false),
+  // Схема «Клинические» по порогам п. 44: 'auto' — пересчитывается при смене численности
+  // группы, 'manual' — завуч поправил границы, и пересчёт её больше не трогает.
+  // NULL — обычная схема, заведённая руками.
+  clinicalSplit: text('clinical_split').$type<'auto' | 'manual'>(),
   validFrom: text('valid_from').notNull(),
   validTo: text('valid_to'),
   ...auditColumns,

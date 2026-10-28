@@ -5,6 +5,7 @@ import { createBackup, registerBackup, snapshotDbFile } from './db/backup/backup
 import { createDb } from './db/client'
 import { hasPendingMigrations, runMigrations } from './db/migrate'
 import { ensureConstraintWeights } from './db/repo/constraint-weights'
+import { ensureClinicalSchemes } from './db/repo/division-scheme'
 import { ensurePairGrid } from './db/repo/pair-grid'
 import { ensureTeacherCategories } from './db/repo/seed'
 import { registerAcademicYearsHandlers } from './ipc/academic-years'
@@ -137,6 +138,7 @@ async function bootstrap() {
   ensureTeacherCategories(db)
   ensurePairGrid(db)
   ensureConstraintWeights(db)
+  ensureClinicalSchemes(db)
 
   registerSettingsHandlers(db)
   registerOperationsHandlers(db)

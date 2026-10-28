@@ -4,6 +4,7 @@ import { LESSON_KIND_SYNONYMS, cellNumber, cellText, matchesPersonName, parseEnu
 import { SPECIALITY_CATALOG, parseGroupName, splitPersonName } from '../../shared/import/references'
 import type { AuditContext } from '../db/repo/audit'
 import { createRow, NotFoundError } from '../db/repo/base-repo'
+import { syncGroupSchemes } from '../db/repo/division-scheme'
 import { isTeacherQualified } from '../db/repo/teaching-load'
 import type { DbLike } from '../db/repo/types'
 import { academicYear, semester } from '../db/schema/calendar'
@@ -306,7 +307,7 @@ export function createMissingReferences(
   const specialities = tx.select().from(speciality).all()
   const specialityId = (code: string) => specialities.find((s) => s.code.toUpperCase() === code.toUpperCase())!.id
   for (const g of report.groups) {
-    createRow(
+    const row = createRow(
       tx,
       studyGroup,
       {
@@ -320,6 +321,7 @@ export function createMissingReferences(
       },
       ctx,
     )
+    syncGroupSchemes(tx, row.id as number, ctx)
     created++
   }
 

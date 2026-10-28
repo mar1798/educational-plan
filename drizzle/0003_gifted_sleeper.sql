@@ -1,0 +1,1 @@
+ALTER TABLE `division_scheme` ADD `clinical_split` text;

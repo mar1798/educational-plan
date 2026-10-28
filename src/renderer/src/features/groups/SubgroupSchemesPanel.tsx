@@ -40,7 +40,8 @@ function draftsFromScheme(scheme: DivisionSchemeWithSubgroups): BoundDraft[] {
 /**
  * Схемы деления на подгруппы (§2.5) и наглядная проверка их совместимости (§2.6):
  * границы рассчитываются автоматически при создании схемы («на 2»/«на 3»), дальше
- * их можно только вручную поправить — не добавляя и не убирая подгруппы. Ниже —
+ * их можно только вручную поправить — не добавляя и не убирая подгруппы. Схему
+ * «Клинические» заводит и пересчитывает main по порогам п. 44. Ниже —
  * полоса позиций 1..N по всем активным схемам и список пересечений подгрупп разных схем.
  */
 export function SubgroupSchemesPanel({ group }: SubgroupSchemesPanelProps) {
@@ -154,6 +155,16 @@ export function SubgroupSchemesPanel({ group }: SubgroupSchemesPanelProps) {
     }
   }
 
+  async function resetClinical(scheme: DivisionSchemeWithSubgroups) {
+    const res = await api.invoke('divisionSchemes:resetClinical', { id: scheme.id })
+    if (res.ok) {
+      notifySuccess('Подгруппы пересчитаны по численности группы')
+      await refresh()
+    } else {
+      notifyError(res.error.message)
+    }
+  }
+
   async function confirmDelete() {
     if (!pendingDelete) return
     const res = await api.invoke('divisionSchemes:delete', { id: pendingDelete.id })
@@ -214,9 +225,24 @@ export function SubgroupSchemesPanel({ group }: SubgroupSchemesPanelProps) {
             <span>
               <strong>{scheme.name}</strong> — {semesterLabel(scheme.semesterId)}, на {scheme.partsCount}
               {scheme.isDefault && <span className="badge">Основная</span>}
+              {scheme.clinicalSplit === 'auto' && (
+                <span className="badge" title="Пересчитывается при смене численности группы: до 14 — вместе, 15–22 — на две, от 23 — на три">
+                  По численности
+                </span>
+              )}
+              {scheme.clinicalSplit === 'manual' && (
+                <span className="badge" title="Границы поправлены вручную — при смене численности деление не пересчитывается">
+                  Изменена вручную
+                </span>
+              )}
               {scheme.validTo && <span className="badge">Закрыта с {scheme.validTo}</span>}
             </span>
             <span className="btn-group">
+              {scheme.clinicalSplit === 'manual' && !scheme.validTo && (
+                <button className="btn-link" onClick={() => void resetClinical(scheme)}>
+                  Пересчитать по численности
+                </button>
+              )}
               {!scheme.isDefault && !scheme.validTo && (
                 <button className="btn-link" onClick={() => void setDefault(scheme)}>
                   Сделать основной

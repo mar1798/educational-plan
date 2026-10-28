@@ -4,13 +4,20 @@ import {
   divisionSchemeCloseInput,
   divisionSchemeCreateInput,
   divisionSchemeDeleteInput,
+  divisionSchemeResetClinicalInput,
   divisionSchemeSetDefaultInput,
   divisionSchemeUpdateBoundsInput,
   divisionSchemesListInput,
 } from '../../shared/ipc/schemas'
 import type { Db } from '../db/client'
 import { closeRow, deleteRow, updateRow } from '../db/repo/base-repo'
-import { createDivisionScheme, loadSchemeWithSubgroups, setDefaultDivisionScheme, updateSubgroupBounds } from '../db/repo/division-scheme'
+import {
+  createDivisionScheme,
+  loadSchemeWithSubgroups,
+  resetClinicalScheme,
+  setDefaultDivisionScheme,
+  updateSubgroupBounds,
+} from '../db/repo/division-scheme'
 import { ensureDeletable } from '../db/repo/reference-guard'
 import { divisionScheme, subgroup } from '../db/schema/people'
 import { teachingLoad } from '../db/schema/load'
@@ -43,6 +50,10 @@ export function registerDivisionSchemesHandlers(db: Db) {
   handle('divisionSchemes:setDefault', divisionSchemeSetDefaultInput, ({ id }) => {
     db.transaction((tx) => setDefaultDivisionScheme(tx, id, { reason: 'смена основной схемы деления' }))
     return { ok: true as const }
+  })
+
+  handle('divisionSchemes:resetClinical', divisionSchemeResetClinicalInput, ({ id }) => {
+    return db.transaction((tx) => resetClinicalScheme(tx, id, { reason: 'возврат к делению по порогам' })) as unknown as DivisionSchemeWithSubgroups
   })
 
   handle('divisionSchemes:delete', divisionSchemeDeleteInput, ({ id }) => {

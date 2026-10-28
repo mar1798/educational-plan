@@ -10,6 +10,7 @@ import {
 } from '../../shared/ipc/schemas'
 import type { Db } from '../db/client'
 import { closeRow, createRow, deleteRow, updateRow } from '../db/repo/base-repo'
+import { syncGroupSchemes } from '../db/repo/division-scheme'
 import { countActiveGroupRefs, reassignActiveGroupRefs } from '../db/repo/group-merge'
 import { streamMember, teachingLoad } from '../db/schema/load'
 import { runOperation } from '../db/repo/operations'
@@ -32,11 +33,19 @@ export function registerGroupsHandlers(db: Db) {
   })
 
   handle('groups:save', groupSaveInput, ({ id, rowVersion, ...values }) => {
-    const row =
-      id != null
-        ? updateRow(db, studyGroup, id, values, rowVersion!, { reason: 'правка группы' })
-        : createRow(db, studyGroup, values, { reason: 'создание группы' })
-    return row as unknown as StudyGroup
+    return db.transaction((tx) => {
+      const before = id != null ? tx.select().from(studyGroup).where(eq(studyGroup.id, id)).get() : undefined
+      const row =
+        id != null
+          ? updateRow(tx, studyGroup, id, values, rowVersion!, { reason: 'правка группы' })
+          : createRow(tx, studyGroup, values, { reason: 'создание группы' })
+      // Подгруппы считаются от численности (п. 44) — пересчёт только когда она изменилась,
+      // чтобы правка названия не трогала схемы.
+      if (before?.studentsCount !== values.studentsCount) {
+        syncGroupSchemes(tx, row.id as number, { reason: 'пересчёт подгрупп по численности группы' })
+      }
+      return row as unknown as StudyGroup
+    })
   })
 
   handle('groups:close', groupCloseInput, ({ id, rowVersion, validTo }) => {

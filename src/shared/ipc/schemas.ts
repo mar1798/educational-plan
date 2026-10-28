@@ -322,6 +322,8 @@ export const divisionSchemeCloseInput = z.object({
 
 export const divisionSchemeSetDefaultInput = z.object({ id: z.number().int().positive() })
 
+export const divisionSchemeResetClinicalInput = z.object({ id: z.number().int().positive() })
+
 export const divisionSchemeDeleteInput = z.object({ id: z.number().int().positive() })
 
 // Календарь (§2.8): генерация calendar_day на период семестра, праздники/каникулы/переносы —

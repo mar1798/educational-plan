@@ -1,12 +1,17 @@
 import { eq } from 'drizzle-orm'
 import { rmSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { OptimisticLockError } from '../../src/main/db/repo/base-repo'
+import { OptimisticLockError, updateRow } from '../../src/main/db/repo/base-repo'
 import {
+  clinicalPartsCount,
   computeEvenSplit,
   createDivisionScheme,
+  ensureClinicalSchemes,
   SubgroupCoverageError,
+  resetClinicalScheme,
   setDefaultDivisionScheme,
+  syncGroupSchemes,
+  syncSemesterSchemes,
   updateSubgroupBounds,
   validateCoverage,
 } from '../../src/main/db/repo/division-scheme'
@@ -215,5 +220,131 @@ describe('схемы деления на подгруппы: создание и
         { subgroupId: sub2.id, rowVersion: sub2.rowVersion, posFrom: 14, posTo: 25 },
       ]),
     ).toThrow(OptimisticLockError)
+  })
+})
+
+describe('клинические подгруппы по численности (решение п. 44)', () => {
+  let ctx: ReturnType<typeof createTestDb>
+  let world: MinimalWorld
+
+  beforeEach(() => {
+    ctx = createTestDb()
+    world = seedMinimalWorld(ctx.db)
+  })
+
+  afterEach(() => {
+    ctx.sqlite.close()
+    rmSync(ctx.dir, { recursive: true, force: true })
+  })
+
+  function setStudents(n: number) {
+    const g = ctx.db.select().from(schema.studyGroup).where(eq(schema.studyGroup.id, world.groupId)).get()!
+    updateRow(ctx.db, schema.studyGroup, world.groupId, { studentsCount: n }, g.rowVersion)
+    syncGroupSchemes(ctx.db, world.groupId)
+  }
+
+  function clinical() {
+    const s = ctx.db.select().from(schema.divisionScheme).where(eq(schema.divisionScheme.groupId, world.groupId)).all().find((x) => x.clinicalSplit != null)
+    if (!s) return null
+    const subs = ctx.db.select().from(schema.subgroup).where(eq(schema.subgroup.schemeId, s.id)).all().sort((a, b) => a.no - b.no)
+    return { ...s, bounds: subs.map((x) => [x.posFrom, x.posTo]) }
+  }
+
+  it('пороги: меньше 15 — вместе, 15–22 — на две, от 23 — на три', () => {
+    expect([1, 14, 15, 22, 23, 30].map(clinicalPartsCount)).toEqual([1, 1, 2, 2, 3, 3])
+  })
+
+  it('заводит схему «Клинические» и пересчитывает её при смене численности', () => {
+    syncGroupSchemes(ctx.db, world.groupId)
+    expect(clinical()).toMatchObject({ name: 'Клинические', partsCount: 3, clinicalSplit: 'auto', isDefault: true })
+
+    setStudents(20)
+    expect(clinical()!.bounds).toEqual([
+      [1, 10],
+      [11, 20],
+    ])
+
+    setStudents(12)
+    expect(clinical()).toBeNull()
+
+    setStudents(16)
+    expect(clinical()!.partsCount).toBe(2)
+  })
+
+  it('подгруппу из нагрузки не удаляет: число частей остаётся, сдвигаются границы', () => {
+    syncGroupSchemes(ctx.db, world.groupId)
+    const scheme = clinical()!
+    const third = ctx.db.select().from(schema.subgroup).where(eq(schema.subgroup.schemeId, scheme.id)).all().find((s) => s.no === 3)!
+    const load = ctx.db.select().from(schema.teachingLoad).where(eq(schema.teachingLoad.id, world.teachingLoadId)).get()!
+    updateRow(ctx.db, schema.teachingLoad, load.id, { divisionSchemeId: scheme.id, subgroupId: third.id }, load.rowVersion)
+
+    setStudents(20)
+    expect(clinical()!.partsCount).toBe(3)
+    expect(clinical()!.bounds).toEqual([
+      [1, 7],
+      [8, 14],
+      [15, 20],
+    ])
+  })
+
+  it('ручная правка замораживает схему, «пересчитать» возвращает деление по порогам', () => {
+    syncGroupSchemes(ctx.db, world.groupId)
+    const scheme = createdClinical()
+    const [a, b, c] = scheme.subgroups
+    updateSubgroupBounds(ctx.db, scheme.id, [
+      { subgroupId: a!.id, rowVersion: a!.rowVersion, posFrom: 1, posTo: 8 },
+      { subgroupId: b!.id, rowVersion: b!.rowVersion, posFrom: 9, posTo: 16 },
+      { subgroupId: c!.id, rowVersion: c!.rowVersion, posFrom: 17, posTo: 25 },
+    ])
+    expect(clinical()!.clinicalSplit).toBe('manual')
+
+    // Пришли двое: ручные границы сохраняются, дотягивается только последняя подгруппа.
+    setStudents(27)
+    expect(clinical()!.bounds).toEqual([
+      [1, 8],
+      [9, 16],
+      [17, 27],
+    ])
+
+    resetClinicalScheme(ctx.db, scheme.id)
+    expect(clinical()).toMatchObject({ clinicalSplit: 'auto', bounds: [[1, 9], [10, 18], [19, 27]] })
+  })
+
+  it('обычную схему после сокращения группы делит заново, чтобы покрытие 1..N не ломалось', () => {
+    const manual = createDivisionScheme(ctx.db, { groupId: world.groupId, semesterId: world.semesterId, name: 'Лаб', partsCount: 2, isDefault: false })
+    setStudents(10)
+    const subs = ctx.db.select().from(schema.subgroup).where(eq(schema.subgroup.schemeId, manual.id)).all()
+    expect(() => validateCoverage(subs, 10)).not.toThrow()
+  })
+
+  it('новый семестр получает клинические схемы всех действующих групп', () => {
+    const springId = ctx.db
+      .insert(schema.semester)
+      .values({ academicYearId: world.academicYearId, no: 2, startsOn: '2027-02-01', endsOn: '2027-06-30' })
+      .returning({ id: schema.semester.id })
+      .get().id
+    syncSemesterSchemes(ctx.db, springId)
+    const schemes = ctx.db.select().from(schema.divisionScheme).where(eq(schema.divisionScheme.semesterId, springId)).all()
+    expect(schemes).toHaveLength(1)
+    expect(schemes[0]).toMatchObject({ groupId: world.groupId, partsCount: 3, clinicalSplit: 'auto' })
+  })
+
+  function createdClinical() {
+    const s = clinical()!
+    return { ...s, subgroups: ctx.db.select().from(schema.subgroup).where(eq(schema.subgroup.schemeId, s.id)).all().sort((x, y) => x.no - y.no) }
+  }
+})
+
+describe('разовое заполнение клинических схем для старой базы (п. 44)', () => {
+  it('заводит схемы одной операцией и второй раз ничего не делает', () => {
+    const ctx = createTestDb()
+    const world = seedMinimalWorld(ctx.db)
+    ensureClinicalSchemes(ctx.db)
+    ensureClinicalSchemes(ctx.db)
+    const schemes = ctx.db.select().from(schema.divisionScheme).where(eq(schema.divisionScheme.groupId, world.groupId)).all()
+    expect(schemes).toHaveLength(1)
+    expect(schemes[0]!.clinicalSplit).toBe('auto')
+    ctx.sqlite.close()
+    rmSync(ctx.dir, { recursive: true, force: true })
   })
 })
