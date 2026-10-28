@@ -86,9 +86,10 @@
 
 - `tests/solver/golden.test.ts` — регрессия: фиксированный seed, стоп по `maxIterations`
   (не по времени, чтобы результат не зависел от скорости машины), порог `penalty < golden + 5%`.
-- `npm run bench:solver` (`tests/solver/bench.ts`, отдельная джоба CI) на наборе
-  `full-college`: жадная фаза < 3000 мс и **ноль** нарушений валидатора; жадная + поиск в
-  бюджете 60 с — падение штрафа минимум на 40 %. Скрипт сам выходит с кодом 1.
+- `npm run bench:solver` (`tests/solver/bench.ts`, отдельная джоба CI) на двух наборах —
+  `full-college` и он же с длинной практикой (по занятию на 6 и 4 ч у каждой группы, п. 48):
+  жадная фаза < 3000 мс и **ноль** нарушений валидатора; жадная + поиск в бюджете 60 с —
+  падение штрафа минимум на 40 %. Скрипт сам выходит с кодом 1.
 - Прочее: `hard.test.ts`, `penalty.test.ts`, `invariants.test.ts`, `paired-units.test.ts`,
   `room-fixed.test.ts`, `localSearch.test.ts`, `isolation.test.ts`.
 

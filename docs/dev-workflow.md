@@ -83,7 +83,7 @@ preload не понимает ESM даже с расширением `.mjs`.
 `.github/workflows/ci.yml`, три джобы:
 
 - `checks` (ubuntu) — `typecheck` + `lint` + `test`;
-- `bench` (ubuntu) — `bench:solver` отдельно, прогон около минуты;
+- `bench` (ubuntu) — `bench:solver` отдельно, два набора по минуте — около двух минут;
 - `build-win` (windows-latest) — `npm ci` (пересборка под win32/x64 ABI) → `npm test`
   (проверяет и загрузку модуля под Windows, и пути с кириллицей — `tests/db/paths.test.ts`)
   → `build:win` → `.exe` выкладывается артефактом. Релиз из CI не публикуется намеренно.

@@ -194,13 +194,35 @@ export function fixedAt(unit: Unit, slot: number, roomIdx: number | null): Fixed
  * не «roomy» и не «tight», типичная нагрузка практического колледжа.
  */
 export function fullCollegeInput(): SolverInput {
+  // ~10 недельных занятий на группу — сопоставимо с реальной недельной сеткой семестра.
+  return fullCollege(Array.from({ length: 10 }, () => 1), ['practice', 'lecture', 'lab', 'seminar', 'computer'])
+}
+
+/**
+ * `full-college` с длинной практикой (п. 48): у каждой группы одно занятие на 6 ч и одно на
+ * 4 ч плюс пять одиночных пар — те же 10 пар в неделю, что и в базовом наборе, но солверу
+ * нужны окна из 2–3 соседних пар.
+ *
+ * Практических кабинетов здесь вдвое больше (каждый третий, а не пятый): при 11 из базового
+ * набора 78 длинных практик не помещались в 66 утренних окон «кабинет × день», и половина
+ * штрафа оказывалась неустранимыми поздними парами — порог улучшения мерил нехватку
+ * кабинетов, а не работу солвера.
+ */
+export function fullCollegeLongSessionsInput(): SolverInput {
+  return fullCollege([3, 2, 1, 1, 1, 1, 1], ['practice', 'lecture', 'practice', 'lab', 'seminar', 'computer'])
+}
+
+/**
+ * `spans` — длины недельных занятий одной группы в парах; длинные идут в практический кабинет.
+ * `roomTypes` — по кругу и для кабинетов, и для требований одиночных занятий.
+ */
+function fullCollege(spans: readonly number[], roomTypes: readonly RoomType[]): SolverInput {
   const groupsCount = 39
   const teachersCount = 140
   const roomsCount = 55
 
   const groups = Array.from({ length: groupsCount }, (_, i) => makeGroup(i, { studentsCount: 20 + (i % 15) }))
   const teachers = Array.from({ length: teachersCount }, (_, i) => makeTeacher(i, { maxPairsPerDay: 6 }))
-  const roomTypes: RoomType[] = ['practice', 'lecture', 'lab', 'seminar', 'computer']
   const rooms = Array.from({ length: roomsCount }, (_, i) => makeRoom(i, { capacity: 30, roomType: roomTypes[i % roomTypes.length] }))
   const buildings = [makeBuilding(0)]
 
@@ -208,16 +230,17 @@ export function fullCollegeInput(): SolverInput {
   let teacherCursor = 0
   const disciplinesPerGroup = 7 // реалистичный недельный набор предметов, не одна дисциплина на все 10 занятий
   for (let g = 0; g < groupsCount; g++) {
-    // ~10 недельных занятий на группу — сопоставимо с реальной недельной сеткой семестра.
-    for (let u = 0; u < 10; u++) {
+    for (let u = 0; u < spans.length; u++) {
       const teacherIdx = teacherCursor % teachersCount
       teacherCursor++
+      const span = spans[u]!
       units.push(
         makeUnit({
           teacherIdx,
           disciplineIdx: u % disciplinesPerGroup,
-          roomTypeRequired: roomTypes[u % roomTypes.length],
+          roomTypeRequired: span > 1 ? 'practice' : roomTypes[u % roomTypes.length],
           attendees: [{ groupIdx: g, memberMask: [0xffffffff, 0xffffffff] }],
+          span,
         }),
       )
     }
