@@ -2,9 +2,13 @@ import { ipcMain } from 'electron'
 import type { z } from 'zod'
 import type { IpcChannel, IpcContract } from '../../shared/ipc/contract'
 import { NotFoundError, OptimisticLockError } from '../db/repo/base-repo'
-import { OperationDependedError } from '../db/repo/operations'
+import { SubgroupCoverageError } from '../db/repo/division-scheme'
+import { OperationDependedError, OperationNotUndoableError } from '../db/repo/operations'
 import { ReferencedError } from '../db/repo/reference-guard'
 import { LockedEntryError, ScheduleConflictError } from '../db/repo/schedule-template'
+import { StreamValidationError } from '../db/repo/stream'
+import { SubstitutionValidationError } from '../db/repo/substitution'
+import { LoadValidationError } from '../db/repo/teaching-load'
 import { err, ok, type Result } from '../../shared/result'
 import type { AppError } from '../../shared/result'
 import { describeIssue } from '../../shared/ipc/validation-messages'
@@ -21,8 +25,18 @@ function toAppError(e: unknown): AppError {
   if (e instanceof NotFoundError) {
     return { code: 'NOT_FOUND', message: e.message }
   }
-  if (e instanceof ReferencedError || e instanceof LockedEntryError || e instanceof OperationDependedError) {
+  if (e instanceof ReferencedError || e instanceof LockedEntryError || e instanceof OperationDependedError || e instanceof OperationNotUndoableError) {
     return { code: 'BLOCKED', message: e.message }
+  }
+  // Предметные отказы (квалификация, лимит часов, состав потока, покрытие подгрупп) —
+  // не сбой программы: без своей ветки они уходили как INTERNAL_ERROR.
+  if (
+    e instanceof LoadValidationError ||
+    e instanceof StreamValidationError ||
+    e instanceof SubstitutionValidationError ||
+    e instanceof SubgroupCoverageError
+  ) {
+    return { code: 'VALIDATION_ERROR', message: e.message }
   }
   if (e instanceof ScheduleConflictError) {
     return { code: 'SCHEDULE_CONFLICT', message: e.message, details: e.reasons }
