@@ -7,6 +7,7 @@ import { notifyError, notifySuccess, notifyWarning } from '../../ui/toast'
 import { Select } from '../../ui/Select'
 import { MissingHint } from '../../ui/MissingHint'
 import { missingOf } from '../../ui/missing'
+import { CreateStreamDialog } from './CreateStreamDialog'
 
 interface TeachingLoadDialogProps {
   semesterId: number
@@ -66,6 +67,7 @@ export function TeachingLoadDialog({
   const [note, setNote] = useState(row?.note ?? '')
   const [validFrom, setValidFrom] = useState(row?.validFrom ?? todayIso())
   const [loading, setLoading] = useState(false)
+  const [creatingStream, setCreatingStream] = useState(false)
 
   useEffect(() => {
     void api.invoke('streams:listForSemester', { semesterId }).then((res) => (res.ok ? setStreams(res.value) : notifyError(res.error.message)))
@@ -193,6 +195,10 @@ export function TeachingLoadDialog({
               </option>
             ))}
           </Select>
+          {streams.length === 0 && <p className="form-hint">В этом семестре потоков ещё нет — создайте его здесь же.</p>}
+          <button type="button" className="btn-link" onClick={() => setCreatingStream(true)}>
+            + Новый поток
+          </button>
         </div>
       )}
 
@@ -282,6 +288,21 @@ export function TeachingLoadDialog({
       </div>
 
       <MissingHint missing={missing} />
+
+      {/* Внутри Content родительского диалога, а не рядом: так вложенная модалка Radix
+          встаёт поверх, а клик по ней не считается кликом «мимо» и не закрывает нагрузку. */}
+      {creatingStream && (
+        <CreateStreamDialog
+          semesterId={semesterId}
+          groups={groups}
+          onClose={() => setCreatingStream(false)}
+          onCreated={(created) => {
+            setCreatingStream(false)
+            setStreams((prev) => [...prev, created])
+            setStreamId(created.id)
+          }}
+        />
+      )}
 
       <div className="dialog-actions-split">
         <div className="btn-group">

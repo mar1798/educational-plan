@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { StudyGroup } from '../../../../shared/ipc/contract'
+import type { StreamWithMembers, StudyGroup } from '../../../../shared/ipc/contract'
 import { api } from '../../api/client'
 import { Dialog } from '../../ui/Dialog'
 import { ruCommon } from '../../ui/locale'
@@ -11,7 +11,7 @@ interface CreateStreamDialogProps {
   semesterId: number
   groups: StudyGroup[]
   onClose: () => void
-  onCreated: () => void
+  onCreated: (created: StreamWithMembers) => void
 }
 
 function todayIso(): string {
@@ -40,7 +40,7 @@ export function CreateStreamDialog({ semesterId, groups, onClose, onCreated }: C
     setLoading(true)
     const res = await api.invoke('streams:create', { semesterId, name, groupIds: [...selected], validFrom })
     setLoading(false)
-    if (res.ok) onCreated()
+    if (res.ok) onCreated(res.value)
     else notifyError(res.error.message)
   }
 
