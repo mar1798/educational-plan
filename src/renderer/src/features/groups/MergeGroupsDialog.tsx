@@ -4,6 +4,8 @@ import { api } from '../../api/client'
 import { Dialog } from '../../ui/Dialog'
 import { Select } from '../../ui/Select'
 import { ruCommon } from '../../ui/locale'
+import { MissingHint } from '../../ui/MissingHint'
+import { missingOf } from '../../ui/missing'
 import { notifyError, notifySuccess } from '../../ui/toast'
 
 interface MergeGroupsDialogProps {
@@ -27,6 +29,12 @@ export function MergeGroupsDialog({ groups, onClose, onMerged }: MergeGroupsDial
   const [mergeDate, setMergeDate] = useState(todayIso())
   const [preview, setPreview] = useState<GroupMergePreview | null>(null)
   const [loading, setLoading] = useState(false)
+
+  const missing = missingOf(
+    sourceGroupId === '' && 'поглощаемую группу',
+    targetGroupId === '' && 'целевую группу',
+    mergeDate === '' && 'дату объединения',
+  )
 
   function resetPreview() {
     setPreview(null)
@@ -115,12 +123,13 @@ export function MergeGroupsDialog({ groups, onClose, onMerged }: MergeGroupsDial
         </p>
       )}
 
+      <MissingHint missing={missing} action="посмотреть последствия" />
       <div className="dialog-actions">
         <button className="btn" onClick={onClose}>
           {ruCommon.cancel}
         </button>
         {!preview ? (
-          <button className="btn btn-primary" disabled={sourceGroupId === '' || targetGroupId === '' || loading} onClick={() => void loadPreview()}>
+          <button className="btn btn-primary" disabled={missing.length > 0 || loading} onClick={() => void loadPreview()}>
             Посмотреть
           </button>
         ) : (

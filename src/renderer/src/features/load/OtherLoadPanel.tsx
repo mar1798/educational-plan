@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import type { OtherLoad, Teacher } from '../../../../shared/ipc/contract'
 import { api } from '../../api/client'
 import { ruCommon } from '../../ui/locale'
+import { MissingHint } from '../../ui/MissingHint'
+import { missingOf } from '../../ui/missing'
 import { notifyError, notifySuccess } from '../../ui/toast'
 import { Select } from '../../ui/Select'
 
@@ -41,13 +43,15 @@ export function OtherLoadPanel({ semesterId }: OtherLoadPanelProps) {
   }, [refresh])
 
   useEffect(() => {
-    void api.invoke('teachers:list', {}).then((res) => res.ok && setTeachers(res.value))
+    void api.invoke('teachers:list', {}).then((res) => (res.ok ? setTeachers(res.value) : notifyError(res.error.message)))
   }, [])
 
   const teacherName = (id: number) => {
     const t = teachers.find((x) => x.id === id)
     return t ? `${t.lastName} ${t.firstName}` : `#${id}`
   }
+
+  const missing = missingOf(teacherId === '' && 'преподавателя', !(hours > 0) && 'часы (больше нуля)')
 
   async function add() {
     if (teacherId === '') return
@@ -112,10 +116,11 @@ export function OtherLoadPanel({ semesterId }: OtherLoadPanelProps) {
           <label>Часы</label>
           <input type="number" min={1} value={hours} onChange={(e) => setHours(Number(e.target.value))} />
         </div>
-        <button type="button" className="btn" disabled={teacherId === ''} onClick={() => void add()}>
+        <button type="button" className="btn" disabled={missing.length > 0} onClick={() => void add()}>
           + Добавить
         </button>
       </div>
+      <MissingHint missing={missing} action="добавить часы" />
     </div>
   )
 }

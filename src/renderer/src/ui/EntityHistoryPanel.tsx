@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ChangeLogEntry } from '../../../shared/ipc/contract'
 import { api } from '../api/client'
+import { notifyError } from './toast'
 
 interface EntityHistoryPanelProps {
   entity: string
@@ -40,6 +41,7 @@ export function EntityHistoryPanel({ entity, id }: EntityHistoryPanelProps) {
     () =>
       api.invoke('audit:entity', { entity, id }).then((res) => {
         if (res.ok) setEntries(res.value)
+        else notifyError(res.error.message)
       }),
     [entity, id],
   )

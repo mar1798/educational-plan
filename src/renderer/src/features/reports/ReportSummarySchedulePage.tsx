@@ -19,7 +19,7 @@ export function ReportSummarySchedulePage() {
   useEffect(() => {
     if (selectedSemesterId === '') return
     void api.invoke('scheduleTemplates:list', { semesterId: selectedSemesterId }).then((res) => {
-      if (!res.ok) return
+      if (!res.ok) return notifyError(res.error.message)
       setTemplates(res.value)
       // Подстановка версии — только при смене семестра: прежняя принадлежала другому
       // семестру. Внутри одного семестра выбор (включая пустой) остаётся за пользователем.

@@ -7,6 +7,7 @@ import { ReferencedError } from '../db/repo/reference-guard'
 import { LockedEntryError, ScheduleConflictError } from '../db/repo/schedule-template'
 import { err, ok, type Result } from '../../shared/result'
 import type { AppError } from '../../shared/result'
+import { describeIssue } from '../../shared/ipc/validation-messages'
 
 /**
  * Доменные ошибки раньше схлопывались в один INTERNAL_ERROR: renderer не мог отличить
@@ -49,12 +50,15 @@ export function handle<C extends IpcChannel>(
   ipcMain.handle(channel, async (_event, rawInput): Promise<Result<IpcContract[C]['out']>> => {
     const parsed = inputSchema.safeParse(rawInput)
     if (!parsed.success) {
-      // Первое сообщение выносим в message: панели без zod-резолвера (недоступность, схемы деления)
-      // показывают именно его, и «Некорректные входные данные» ничего не объясняло бы завучу.
-      const first = parsed.error.issues[0]
+      // Сообщения выносим в message с названием поля: панели без zod-резолвера (недоступность,
+      // схемы деления) показывают именно его, и «Некорректные входные данные» ничего не
+      // объясняло бы завучу. Больше трёх не перечисляем — тост не должен стать простынёй.
+      const issues = parsed.error.issues
+      const listed = issues.slice(0, 3).map(describeIssue).join('; ')
+      const more = issues.length > 3 ? ` и ещё ${issues.length - 3}` : ''
       return err<AppError>({
         code: 'VALIDATION_ERROR',
-        message: first ? `Некорректные данные: ${first.message}` : 'Некорректные входные данные',
+        message: issues.length > 0 ? `Не сохранено: ${listed}${more}` : 'Некорректные входные данные',
         details: parsed.error.flatten(),
       })
     }

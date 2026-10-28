@@ -4,6 +4,8 @@ import { api } from '../../api/client'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { EntityHistoryPanel } from '../../ui/EntityHistoryPanel'
 import { ruCommon } from '../../ui/locale'
+import { MissingHint } from '../../ui/MissingHint'
+import { missingOf } from '../../ui/missing'
 import { notifyError, notifySuccess } from '../../ui/toast'
 import { Select } from '../../ui/Select'
 
@@ -74,9 +76,11 @@ export function SubgroupSchemesPanel({ group }: SubgroupSchemesPanelProps) {
   useEffect(() => {
     void api.invoke('academicYears:list', {}).then((res) => {
       if (res.ok) setAcademicYears(res.value)
+      else notifyError(res.error.message)
     })
     void api.invoke('semesters:list', {}).then((res) => {
       if (res.ok) setSemesters(res.value)
+      else notifyError(res.error.message)
     })
   }, [])
 
@@ -90,8 +94,10 @@ export function SubgroupSchemesPanel({ group }: SubgroupSchemesPanelProps) {
     [semesters, yearNameById],
   )
 
+  const missingForScheme = missingOf(semesterId === '' && 'семестр', name.trim() === '' && 'название схемы')
+
   async function createScheme() {
-    if (semesterId === '' || name.trim() === '') return
+    if (semesterId === '' || missingForScheme.length > 0) return
     const res = await api.invoke('divisionSchemes:create', { groupId: group.id, semesterId, name: name.trim(), partsCount, isDefault })
     if (res.ok) {
       notifySuccess('Схема деления создана')
@@ -308,10 +314,11 @@ export function SubgroupSchemesPanel({ group }: SubgroupSchemesPanelProps) {
           <input id="scheme-default" type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} />
           <label htmlFor="scheme-default">Основная</label>
         </div>
-        <button type="button" className="btn" onClick={() => void createScheme()} disabled={semesterId === '' || name.trim() === ''}>
+        <button type="button" className="btn" onClick={() => void createScheme()} disabled={missingForScheme.length > 0}>
           + Добавить схему
         </button>
       </div>
+      <MissingHint missing={missingForScheme} action="добавить схему" />
 
       {activeSchemes.length > 0 && (
         <div className="position-bar-block">

@@ -11,6 +11,7 @@ import { NumberField } from '../../ui/form/NumberField'
 import { SelectField } from '../../ui/form/SelectField'
 import { ruCommon } from '../../ui/locale'
 import { ReferenceCrudPage, type ReferenceCrudAction } from '../../ui/ReferenceCrudPage'
+import { notifyError } from '../../ui/toast'
 
 type SemesterFormValues = z.infer<typeof semesterSaveInput>
 
@@ -88,6 +89,7 @@ export function SemestersPage() {
   useEffect(() => {
     void api.invoke('academicYears:list', {}).then((res) => {
       if (res.ok) setYears(res.value)
+      else notifyError(res.error.message)
     })
   }, [])
 

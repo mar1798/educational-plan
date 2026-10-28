@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { AcademicYear, Semester } from '../../../../shared/ipc/contract'
 import { api } from '../../api/client'
+import { notifyError } from '../../ui/toast'
 
 /** Общий список семестров с человекочитаемой подписью — используется на всех экранах нагрузки (§3.5–3.7). */
 export function useSemesterOptions() {
@@ -10,9 +11,11 @@ export function useSemesterOptions() {
   useEffect(() => {
     void api.invoke('academicYears:list', {}).then((res) => {
       if (res.ok) setAcademicYears(res.value)
+      else notifyError(res.error.message)
     })
     void api.invoke('semesters:list', {}).then((res) => {
       if (res.ok) setSemesters(res.value)
+      else notifyError(res.error.message)
     })
   }, [])
 

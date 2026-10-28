@@ -60,15 +60,15 @@ export function GenerationPage() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    void api.invoke('teachers:list', {}).then((res) => res.ok && setTeachers(res.value))
-    void api.invoke('disciplines:list', {}).then((res) => res.ok && setDisciplines(res.value))
-    void api.invoke('groups:list', {}).then((res) => res.ok && setGroups(res.value))
+    void api.invoke('teachers:list', {}).then((res) => (res.ok ? setTeachers(res.value) : notifyError(res.error.message)))
+    void api.invoke('disciplines:list', {}).then((res) => (res.ok ? setDisciplines(res.value) : notifyError(res.error.message)))
+    void api.invoke('groups:list', {}).then((res) => (res.ok ? setGroups(res.value) : notifyError(res.error.message)))
   }, [])
 
   useEffect(() => {
     if (selectedSemesterId === '') return
     void api.invoke('scheduleTemplates:list', { semesterId: selectedSemesterId }).then((res) => {
-      if (!res.ok) return
+      if (!res.ok) return notifyError(res.error.message)
       setTemplates(res.value)
       setTemplateId((current) => (current !== '' && res.value.some((t) => t.id === current) ? current : (res.value.at(-1)?.id ?? '')))
     })
@@ -230,7 +230,13 @@ export function GenerationPage() {
             ))}
           </FilterSelect>
           {!generating && draft == null && (
-            <button type="button" className="btn btn-primary" onClick={() => void handleStart()} disabled={templateId === ''}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => void handleStart()}
+              disabled={templateId === ''}
+              title={templateId === '' ? 'Сначала выберите семестр и версию шаблона' : undefined}
+            >
               Сгенерировать
             </button>
           )}

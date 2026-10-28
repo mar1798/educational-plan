@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import type { Discipline, TeacherQualification } from '../../../../shared/ipc/contract'
 import { api } from '../../api/client'
 import { ruCommon } from '../../ui/locale'
+import { MissingHint } from '../../ui/MissingHint'
+import { missingOf } from '../../ui/missing'
 import { notifyError, notifySuccess, notifyWarning } from '../../ui/toast'
 import { Select } from '../../ui/Select'
 
@@ -24,6 +26,7 @@ export function TeacherQualificationsPanel({ teacherId }: TeacherQualificationsP
     () =>
       api.invoke('teacherQualifications:list', { teacherId }).then((res) => {
         if (res.ok) setItems(res.value)
+        else notifyError(res.error.message)
       }),
     [teacherId],
   )
@@ -35,6 +38,7 @@ export function TeacherQualificationsPanel({ teacherId }: TeacherQualificationsP
   useEffect(() => {
     void api.invoke('disciplines:list', {}).then((res) => {
       if (res.ok) setDisciplines(res.value)
+      else notifyError(res.error.message)
     })
   }, [])
 
@@ -42,8 +46,10 @@ export function TeacherQualificationsPanel({ teacherId }: TeacherQualificationsP
     return disciplines.find((d) => d.id === id)?.name ?? `#${id}`
   }
 
+  const missing = missingOf(disciplineId === '' && 'дисциплину', validFrom === '' && 'дату начала')
+
   function add() {
-    if (disciplineId === '') return
+    if (missing.length > 0) return
     api
       .invoke('teacherQualifications:create', { teacherId, disciplineId: Number(disciplineId), validFrom })
       .then((res) => {
@@ -125,10 +131,11 @@ export function TeacherQualificationsPanel({ teacherId }: TeacherQualificationsP
           <label>С даты</label>
           <input type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
         </div>
-        <button type="button" className="btn" onClick={add} disabled={disciplineId === ''}>
+        <button type="button" className="btn" onClick={add} disabled={missing.length > 0}>
           + Добавить
         </button>
       </div>
+      <MissingHint missing={missing} action="добавить квалификацию" />
     </div>
   )
 }

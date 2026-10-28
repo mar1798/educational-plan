@@ -22,6 +22,8 @@ import {
 import { IMPORT_PRESETS, type ColumnConfig, type SavedMapping } from '../../../../shared/import/presets'
 import { api } from '../../api/client'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
+import { MissingHint } from '../../ui/MissingHint'
+import { missingOf } from '../../ui/missing'
 import { ruCommon } from '../../ui/locale'
 import { useSemesterOptions } from '../load/useSemesterOptions'
 import { notifyError, notifySuccess } from '../../ui/toast'
@@ -125,11 +127,11 @@ export function ImportWizardPage() {
   const [creatingMissing, setCreatingMissing] = useState(false)
 
   useEffect(() => {
-    void api.invoke('import:profiles:list', { targetEntity }).then((res) => res.ok && setProfiles(res.value))
+    void api.invoke('import:profiles:list', { targetEntity }).then((res) => (res.ok ? setProfiles(res.value) : notifyError(res.error.message)))
   }, [targetEntity])
 
   useEffect(() => {
-    if (targetEntity === 'curriculum') void api.invoke('curricula:list', { includeArchived: true }).then((res) => res.ok && setCurricula(res.value))
+    if (targetEntity === 'curriculum') void api.invoke('curricula:list', { includeArchived: true }).then((res) => (res.ok ? setCurricula(res.value) : notifyError(res.error.message)))
   }, [targetEntity])
 
   const selectedProfile = profileId === '' ? null : (profiles.find((p) => p.id === profileId) ?? null)
@@ -351,12 +353,17 @@ export function ImportWizardPage() {
     setCustomHeaderRules((prev) => new Set([...prev].filter((j) => j !== index).map((j) => (j > index ? j - 1 : j))))
   }
 
-  const canApply =
-    missingRequiredFields.length === 0 &&
-    unresolvedDiscrepancies.length === 0 &&
-    mappedRows.length > 0 &&
-    (targetEntity !== 'curriculum' || curriculumId !== '') &&
-    (targetEntity !== 'teaching_load' || semesterId !== '')
+  // Те же условия, что гасят «Применить», но словами — иначе завуч на пятом шаге видит
+  // неактивную кнопку и не знает, на какой из предыдущих шагов вернуться.
+  const applyBlockers = missingOf(
+    missingRequiredFields.length > 0 && `колонки для полей: ${missingRequiredFields.map((f) => f.labelRu).join(', ')} (шаг 4)`,
+    unresolvedDiscrepancies.length > 0 && `решение по расхождениям: ${unresolvedDiscrepancies.length} (выше на этой странице)`,
+    mappedRows.length === 0 && 'хотя бы одну строку данных — сейчас из файла не распознано ни одной записи',
+    targetEntity === 'curriculum' && curriculumId === '' && 'учебный план',
+    targetEntity === 'teaching_load' && semesterId === '' && 'семестр',
+    validFrom === '' && 'дату «Действует с»',
+  )
+  const canApply = applyBlockers.length === 0
 
   /**
    * Чего не хватает в справочниках под нагрузку из файла — спрашиваем main (он же потом
@@ -566,6 +573,7 @@ export function ImportWizardPage() {
               {selectedPreset && <span className="history-empty">{selectedPreset.description}</span>}
             </div>
           )}
+          <MissingHint missing={missingOf(sheets.length === 0 && 'файл')} action="продолжить" />
           <div className="dialog-actions">
             <button type="button" className="btn btn-primary" disabled={sheets.length === 0} onClick={() => setStep(2)}>
               Далее →
@@ -586,6 +594,7 @@ export function ImportWizardPage() {
             </div>
           ))}
           {loadingGrid && <p className="history-empty">Загрузка листа…</p>}
+          {!loadingGrid && <MissingHint missing={missingOf(!grid && 'лист')} action="продолжить" />}
           <div className="dialog-actions">
             <button type="button" className="btn" onClick={() => setStep(1)}>
               ← Назад
@@ -1009,7 +1018,13 @@ export function ImportWizardPage() {
             <label>Сохранить сопоставление как профиль (§3.8d)</label>
             <div className="btn-group">
               <input type="text" value={profileName} onChange={(e) => setProfileName(e.target.value)} placeholder="Название профиля" />
-              <button type="button" className="btn" disabled={profileName.trim() === ''} onClick={() => void saveProfile(false)}>
+              <button
+                type="button"
+                className="btn"
+                disabled={profileName.trim() === ''}
+                title={profileName.trim() === '' ? 'Введите название профиля' : undefined}
+                onClick={() => void saveProfile(false)}
+              >
                 Сохранить как новый
               </button>
               {selectedProfile && (
@@ -1039,6 +1054,7 @@ export function ImportWizardPage() {
             </div>
           )}
 
+          {!applyResult && <MissingHint missing={applyBlockers} action="применить" />}
           <div className="dialog-actions">
             <button type="button" className="btn" onClick={() => setStep(4)}>
               ← Назад

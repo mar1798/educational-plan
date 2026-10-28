@@ -14,6 +14,7 @@ import { ruCommon } from '../../ui/locale'
 import { ReferenceCrudPage, type ReferenceCrudAction } from '../../ui/ReferenceCrudPage'
 import { MergeGroupsDialog } from './MergeGroupsDialog'
 import { SubgroupSchemesPanel } from './SubgroupSchemesPanel'
+import { notifyError } from '../../ui/toast'
 
 type GroupFormValues = z.infer<typeof groupSaveInput>
 
@@ -121,12 +122,14 @@ export function GroupsPage() {
   useEffect(() => {
     void api.invoke('specialities:list', {}).then((res) => {
       if (res.ok) setSpecialities(res.value)
+      else notifyError(res.error.message)
     })
   }, [])
 
   useEffect(() => {
     void api.invoke('groups:list', { includeClosed: false }).then((res) => {
       if (res.ok) setActiveGroups(res.value)
+      else notifyError(res.error.message)
     })
   }, [refreshToken])
 
@@ -163,7 +166,12 @@ export function GroupsPage() {
         rowClassName={(row) => (row.validTo ? 'archived-row' : '')}
         renderExtra={(row) => <SubgroupSchemesPanel group={row} />}
         toolbarExtra={
-          <button className="btn" onClick={() => setMergeOpen(true)} disabled={activeGroups.length < 2}>
+          <button
+            className="btn"
+            onClick={() => setMergeOpen(true)}
+            disabled={activeGroups.length < 2}
+            title={activeGroups.length < 2 ? 'Для объединения нужно хотя бы две действующие группы' : undefined}
+          >
             Объединить группы…
           </button>
         }

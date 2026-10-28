@@ -52,6 +52,7 @@ export function TeacherAbsencesPanel({ teacherId }: TeacherAbsencesPanelProps) {
     () =>
       api.invoke('teacherAbsences:list', { teacherId }).then((res) => {
         if (res.ok) setItems(res.value)
+        else notifyError(res.error.message)
       }),
     [teacherId],
   )

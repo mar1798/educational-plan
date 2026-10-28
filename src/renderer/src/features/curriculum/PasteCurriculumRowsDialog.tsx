@@ -3,6 +3,8 @@ import type { Cell } from '../../../../shared/import/engine'
 import { api } from '../../api/client'
 import { Dialog } from '../../ui/Dialog'
 import { ruCommon } from '../../ui/locale'
+import { MissingHint } from '../../ui/MissingHint'
+import { missingOf } from '../../ui/missing'
 import { notifyError, notifySuccess, notifyWarning } from '../../ui/toast'
 
 interface PasteCurriculumRowsDialogProps {
@@ -74,6 +76,9 @@ export function PasteCurriculumRowsDialog({ curriculumId, onClose, onDone }: Pas
   const [loading, setLoading] = useState(false)
 
   const rows = parseTsv(text)
+  // Диапазон, скопированный не из Excel, приходит через пробелы — тогда всё попадает в
+  // колонку «Дисциплина», а main отбрасывает строки поштучно; лучше сказать до отправки.
+  const noTabs = rows.length > 0 && !text.includes('\t')
 
   async function submit() {
     if (rows.length === 0) return
@@ -83,7 +88,10 @@ export function PasteCurriculumRowsDialog({ curriculumId, onClose, onDone }: Pas
     if (res.ok) {
       notifySuccess(`Создано строк: ${res.value.created} (операция #${res.value.operationId})`)
       if (res.value.skipped.length > 0) {
-        notifyWarning(`Пропущено: ${res.value.skipped.length} — ${res.value.skipped[0]!.reason}`)
+        // Все причины, а не только первая: иначе остальные строки пропадали без объяснения.
+        const reasons = res.value.skipped.slice(0, 5).map((s) => s.reason)
+        const more = res.value.skipped.length > 5 ? `; и ещё ${res.value.skipped.length - 5}` : ''
+        notifyWarning(`Пропущено строк: ${res.value.skipped.length} — ${reasons.join('; ')}${more}`)
       }
       onDone()
     } else {
@@ -113,11 +121,13 @@ export function PasteCurriculumRowsDialog({ curriculumId, onClose, onDone }: Pas
         <input id="paste-valid-from" type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
       </div>
       <p className="history-empty">Распознано строк: {rows.length}</p>
+      {noTabs && <p className="form-error">Колонки не разделены табуляцией — скопируйте диапазон прямо из Excel, а не из текста.</p>}
+      <MissingHint missing={missingOf(rows.length === 0 && 'хотя бы одну строку диапазона', validFrom === '' && 'дату «Действует с»')} action="добавить" />
       <div className="dialog-actions">
         <button className="btn" onClick={onClose}>
           {ruCommon.cancel}
         </button>
-        <button className="btn btn-primary" disabled={rows.length === 0 || loading} onClick={() => void submit()}>
+        <button className="btn btn-primary" disabled={rows.length === 0 || validFrom === '' || loading} onClick={() => void submit()}>
           Добавить
         </button>
       </div>

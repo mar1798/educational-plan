@@ -5,6 +5,9 @@ import { ErrorBoundary } from './app/ErrorBoundary'
 import { router } from './app/router'
 import { Toaster } from './ui/toast'
 import './styles/global.css'
+import { installRuValidationMessages } from '../../shared/ipc/validation-messages'
+
+installRuValidationMessages()
 
 const root = document.getElementById('root')
 if (!root) throw new Error('#root не найден')

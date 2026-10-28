@@ -41,14 +41,14 @@ export function LoadEditorPage() {
   const selectedSemesterId = semesterId
 
   useEffect(() => {
-    void api.invoke('groups:list', {}).then((res) => res.ok && setGroups(res.value))
-    void api.invoke('teachers:list', {}).then((res) => res.ok && setTeachers(res.value))
-    void api.invoke('disciplines:list', { includeArchived: true }).then((res) => res.ok && setDisciplines(res.value))
+    void api.invoke('groups:list', {}).then((res) => (res.ok ? setGroups(res.value) : notifyError(res.error.message)))
+    void api.invoke('teachers:list', {}).then((res) => (res.ok ? setTeachers(res.value) : notifyError(res.error.message)))
+    void api.invoke('disciplines:list', { includeArchived: true }).then((res) => (res.ok ? setDisciplines(res.value) : notifyError(res.error.message)))
   }, [])
 
   useEffect(() => {
     void api.invoke('curricula:list', { includeArchived: true }).then(async (res) => {
-      if (!res.ok) return
+      if (!res.ok) return notifyError(res.error.message)
       const all = await Promise.all(res.value.map((c) => api.invoke('curriculumRows:list', { curriculumId: c.id })))
       setCurriculumRows(all.filter((r) => r.ok).flatMap((r) => (r.ok ? r.value : [])))
     })
@@ -116,7 +116,13 @@ export function LoadEditorPage() {
               </option>
             ))}
           </FilterSelect>
-          <button type="button" className="btn btn-primary" disabled={selectedSemesterId === ''} onClick={() => setEditingRow('new')}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={selectedSemesterId === ''}
+            title={selectedSemesterId === '' ? 'Сначала выберите семестр' : undefined}
+            onClick={() => setEditingRow('new')}
+          >
             + Добавить нагрузку
           </button>
         </div>

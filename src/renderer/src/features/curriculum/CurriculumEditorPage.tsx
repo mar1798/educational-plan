@@ -51,9 +51,11 @@ export function CurriculumEditorPage() {
   useEffect(() => {
     void api.invoke('curricula:list', { includeArchived: true }).then((res) => {
       if (res.ok) setPlan(res.value.find((p) => p.id === curriculumId) ?? null)
+      else notifyError(res.error.message)
     })
     void api.invoke('disciplines:list', { includeArchived: true }).then((res) => {
       if (res.ok) setDisciplines(res.value)
+      else notifyError(res.error.message)
     })
     void refreshRows()
   }, [curriculumId, refreshRows])

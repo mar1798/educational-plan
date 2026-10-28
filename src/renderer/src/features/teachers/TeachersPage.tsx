@@ -15,6 +15,7 @@ import { ReferenceCrudPage, type ReferenceCrudAction } from '../../ui/ReferenceC
 import { TeacherAbsencesPanel } from './TeacherAbsencesPanel'
 import { TeacherQualificationsPanel } from './TeacherQualificationsPanel'
 import { TeacherSubstitutionHistoryPanel } from './TeacherSubstitutionHistoryPanel'
+import { notifyError } from '../../ui/toast'
 
 type TeacherFormValues = z.infer<typeof teacherSaveInput>
 
@@ -108,9 +109,11 @@ export function TeachersPage() {
   useEffect(() => {
     void api.invoke('teacherCategories:list', {}).then((res) => {
       if (res.ok) setCategories(res.value)
+      else notifyError(res.error.message)
     })
     void api.invoke('cmc:list', {}).then((res) => {
       if (res.ok) setCmcList(res.value)
+      else notifyError(res.error.message)
     })
   }, [])
 

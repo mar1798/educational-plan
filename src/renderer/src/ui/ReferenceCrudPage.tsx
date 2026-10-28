@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useState } from 'react'
-import { useForm, type Control, type DefaultValues, type FieldValues, type Resolver } from 'react-hook-form'
+import { useForm, type Control, type DefaultValues, type FieldErrors, type FieldValues, type Resolver } from 'react-hook-form'
 import type { ColumnDef, SortingState } from '@tanstack/react-table'
 import type { AppError, Result } from '../../../shared/result'
 import { ConfirmDialog } from './ConfirmDialog'
@@ -9,6 +9,7 @@ import { Dialog } from './Dialog'
 import { EntityHistoryPanel } from './EntityHistoryPanel'
 import { ruCommon } from './locale'
 import { notifyError, notifySuccess } from './toast'
+import { describeIssue } from '../../../shared/ipc/validation-messages'
 
 export interface ReferenceCrudAction<TRow> {
   key: string
@@ -45,6 +46,25 @@ export interface ReferenceCrudConfig<TRow extends { id: number; rowVersion: numb
   renderExtra?: (row: TRow) => ReactNode
   /** Доп. кнопка(и) в шапке рядом с «Добавить» — для действий не над одной строкой (например, слияние). */
   toolbarExtra?: ReactNode
+}
+
+/**
+ * Ошибки react-hook-form вложены по пути поля; разворачиваем в плоский список с русскими
+ * подписями — так видны и ошибки полей, которых нет на экране (их схема проверяет, а
+ * renderFields не рисует), иначе форма молча не отправлялась бы.
+ */
+function flattenErrors(errors: FieldErrors, path: string[] = []): string[] {
+  const out: string[] = []
+  for (const [key, value] of Object.entries(errors)) {
+    if (value == null || typeof value !== 'object') continue
+    const here = key === '' || key === 'root' ? path : [...path, key]
+    if (typeof (value as { message?: unknown }).message === 'string' && (value as { message: string }).message !== '') {
+      out.push(describeIssue({ path: here, message: (value as { message: string }).message }))
+    } else {
+      out.push(...flattenErrors(value as FieldErrors, here))
+    }
+  }
+  return out
 }
 
 /**
@@ -113,6 +133,13 @@ export function ReferenceCrudPage<TRow extends { id: number; rowVersion: number 
     }
   }
 
+  function onInvalid(errors: FieldErrors<TFormValues>) {
+    const list = flattenErrors(errors)
+    notifyError(list.length > 0 ? `Не сохранено: ${list.join('; ')}` : 'Не сохранено: проверьте поля формы')
+  }
+
+  const errorList = form.formState.submitCount > 0 ? flattenErrors(form.formState.errors) : []
+
   async function runAction(action: ReferenceCrudAction<TRow>, row: TRow) {
     const res = await action.run(row)
     setPendingAction(null)
@@ -156,8 +183,18 @@ export function ReferenceCrudPage<TRow extends { id: number; rowVersion: number 
         onOpenChange={(open) => !open && closeDialog()}
         title={dialogMode === 'edit' ? config.editTitleRu : config.createTitleRu}
       >
-        <form onSubmit={form.handleSubmit(onSubmit)}>
+        <form onSubmit={form.handleSubmit(onSubmit, onInvalid)}>
           {config.renderFields(form.control)}
+          {errorList.length > 0 && (
+            <div className="form-error" role="alert">
+              Не сохранено, исправьте:
+              <ul>
+                {errorList.map((e) => (
+                  <li key={e}>{e}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div className="dialog-actions-split">
             <div className="btn-group">
               {dialogMode === 'edit' &&

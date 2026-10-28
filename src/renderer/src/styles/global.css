@@ -546,6 +546,12 @@ table.data-table {
   margin-top: 4px;
 }
 
+.form-hint {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
 /* История изменений (§2.10) */
 
 .history-panel {

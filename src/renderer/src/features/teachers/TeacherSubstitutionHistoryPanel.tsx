@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { SubstitutionHistoryRow } from '../../../../shared/ipc/contract'
 import { api } from '../../api/client'
+import { notifyError } from '../../ui/toast'
 
 interface TeacherSubstitutionHistoryPanelProps {
   teacherId: number
@@ -28,6 +29,7 @@ export function TeacherSubstitutionHistoryPanel({ teacherId }: TeacherSubstituti
     () =>
       api.invoke('substitutions:teacherHistory', { teacherId }).then((res) => {
         if (res.ok) setItems(res.value)
+        else notifyError(res.error.message)
       }),
     [teacherId],
   )

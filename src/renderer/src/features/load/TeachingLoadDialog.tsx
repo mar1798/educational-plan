@@ -5,6 +5,8 @@ import { Dialog } from '../../ui/Dialog'
 import { ROOM_TYPE_LABEL, ruCommon } from '../../ui/locale'
 import { notifyError, notifySuccess, notifyWarning } from '../../ui/toast'
 import { Select } from '../../ui/Select'
+import { MissingHint } from '../../ui/MissingHint'
+import { missingOf } from '../../ui/missing'
 
 interface TeachingLoadDialogProps {
   semesterId: number
@@ -66,7 +68,7 @@ export function TeachingLoadDialog({
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    void api.invoke('streams:listForSemester', { semesterId }).then((res) => res.ok && setStreams(res.value))
+    void api.invoke('streams:listForSemester', { semesterId }).then((res) => (res.ok ? setStreams(res.value) : notifyError(res.error.message)))
   }, [semesterId])
 
   useEffect(() => {
@@ -83,7 +85,16 @@ export function TeachingLoadDialog({
   // группы виден кадр со схемами прошлой, пока идёт запрос за новыми.
   const visibleSchemes = targetType === 'group' && groupId !== '' && groupId === schemesGroupId ? schemes : []
 
-  const isValid = curriculumRowId !== '' && teacherId !== '' && hoursPlanned > 0 && (targetType === 'group' ? groupId !== '' : streamId !== '')
+  // Кнопка «Сохранить» гаснет, пока чего-то не хватает, — без перечня незаполненного завуч
+  // не понимает, почему: особенно на потоке, где список пуст, пока поток не создан.
+  const missing = missingOf(
+    targetType === 'group' ? groupId === '' && 'группу' : streamId === '' && 'поток',
+    curriculumRowId === '' && 'дисциплину',
+    teacherId === '' && 'преподавателя',
+    !(hoursPlanned > 0) && 'часы (больше нуля)',
+    validFrom === '' && 'дату «Действует с»',
+  )
+  const isValid = missing.length === 0
 
   async function submit() {
     setLoading(true)
@@ -269,6 +280,8 @@ export function TeachingLoadDialog({
         <label htmlFor="load-note">Заметка</label>
         <input id="load-note" type="text" value={note} onChange={(e) => setNote(e.target.value)} />
       </div>
+
+      <MissingHint missing={missing} />
 
       <div className="dialog-actions-split">
         <div className="btn-group">

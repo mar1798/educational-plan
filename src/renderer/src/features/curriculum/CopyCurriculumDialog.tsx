@@ -3,6 +3,8 @@ import type { Curriculum, Speciality } from '../../../../shared/ipc/contract'
 import { api } from '../../api/client'
 import { Dialog } from '../../ui/Dialog'
 import { ruCommon } from '../../ui/locale'
+import { MissingHint } from '../../ui/MissingHint'
+import { missingOf } from '../../ui/missing'
 import { Select } from '../../ui/Select'
 
 interface CopyCurriculumDialogProps {
@@ -23,6 +25,8 @@ export function CopyCurriculumDialog({ source, specialities, onClose, onCopied, 
   const [admissionYear, setAdmissionYear] = useState(source.admissionYear + 1)
   const [name, setName] = useState(`${source.name} (копия)`)
   const [loading, setLoading] = useState(false)
+
+  const missing = missingOf(name.trim() === '' && 'название нового плана', !(admissionYear > 0) && 'год набора')
 
   async function confirm() {
     setLoading(true)
@@ -53,11 +57,12 @@ export function CopyCurriculumDialog({ source, specialities, onClose, onCopied, 
         <input id="copy-name" type="text" value={name} onChange={(e) => setName(e.target.value)} />
       </div>
       <p className="history-empty">Строки плана переносятся все; недельная раскладка часов — нет, она задаётся заново для нового семестра.</p>
+      <MissingHint missing={missing} action="копировать" />
       <div className="dialog-actions">
         <button className="btn" onClick={onClose}>
           {ruCommon.cancel}
         </button>
-        <button className="btn btn-primary" disabled={loading || name.trim() === ''} onClick={() => void confirm()}>
+        <button className="btn btn-primary" disabled={loading || missing.length > 0} onClick={() => void confirm()}>
           Копировать
         </button>
       </div>

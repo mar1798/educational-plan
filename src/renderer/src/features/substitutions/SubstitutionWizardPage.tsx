@@ -220,9 +220,11 @@ export function SubstitutionWizardPage() {
   useEffect(() => {
     void api.invoke('teachers:list', {}).then((res) => {
       if (res.ok) setTeachers(res.value)
+      else notifyError(res.error.message)
     })
     void api.invoke('rooms:list', {}).then((res) => {
       if (res.ok) setRooms(res.value)
+      else notifyError(res.error.message)
     })
   }, [])
 

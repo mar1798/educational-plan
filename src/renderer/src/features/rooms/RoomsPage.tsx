@@ -12,6 +12,7 @@ import { TextField } from '../../ui/form/TextField'
 import { DateField } from '../../ui/form/DateField'
 import { ROOM_TYPE_LABEL, ruCommon } from '../../ui/locale'
 import { ReferenceCrudPage, type ReferenceCrudAction } from '../../ui/ReferenceCrudPage'
+import { notifyError } from '../../ui/toast'
 
 type RoomFormValues = z.infer<typeof roomSaveInput>
 
@@ -88,6 +89,7 @@ export function RoomsPage() {
   useEffect(() => {
     void api.invoke('buildings:list', {}).then((res) => {
       if (res.ok) setBuildings(res.value)
+      else notifyError(res.error.message)
     })
   }, [])
 

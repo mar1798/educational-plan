@@ -12,6 +12,7 @@ import { DateField } from '../../ui/form/DateField'
 import { TextField } from '../../ui/form/TextField'
 import { ruCommon } from '../../ui/locale'
 import { ReferenceCrudPage, type ReferenceCrudAction } from '../../ui/ReferenceCrudPage'
+import { notifyError } from '../../ui/toast'
 
 type CalendarPeriodFormValues = z.infer<typeof calendarPeriodSaveInput>
 
@@ -123,9 +124,11 @@ export function CalendarPeriodsPage() {
   useEffect(() => {
     void api.invoke('specialities:list', {}).then((res) => {
       if (res.ok) setSpecialities(res.value)
+      else notifyError(res.error.message)
     })
     void api.invoke('groups:list', { includeClosed: false }).then((res) => {
       if (res.ok) setGroups(res.value)
+      else notifyError(res.error.message)
     })
   }, [])
 

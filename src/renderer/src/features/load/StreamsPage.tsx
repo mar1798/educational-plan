@@ -27,7 +27,7 @@ export function StreamsPage() {
   const selectedSemesterId = semesterId
 
   useEffect(() => {
-    void api.invoke('groups:list', {}).then((res) => res.ok && setGroups(res.value))
+    void api.invoke('groups:list', {}).then((res) => (res.ok ? setGroups(res.value) : notifyError(res.error.message)))
   }, [])
 
   const refresh = useCallback(() => {
@@ -74,7 +74,13 @@ export function StreamsPage() {
               </option>
             ))}
           </FilterSelect>
-          <button type="button" className="btn btn-primary" disabled={selectedSemesterId === ''} onClick={() => setCreating(true)}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={selectedSemesterId === ''}
+            title={selectedSemesterId === '' ? 'Сначала выберите семестр' : undefined}
+            onClick={() => setCreating(true)}
+          >
             + Создать поток
           </button>
         </div>

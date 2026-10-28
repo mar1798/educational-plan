@@ -5,6 +5,8 @@ import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { Dialog } from '../../ui/Dialog'
 import { Select } from '../../ui/Select'
 import { ruCommon } from '../../ui/locale'
+import { MissingHint } from '../../ui/MissingHint'
+import { missingOf } from '../../ui/missing'
 import { notifyError, notifySuccess } from '../../ui/toast'
 import { CurriculumWeeksPanel } from './CurriculumWeeksPanel'
 
@@ -107,7 +109,12 @@ export function CurriculumRowDialog({ curriculum, row, disciplines, onClose, onS
     }
   }
 
-  const isValid = form.disciplineId !== '' && form.credits > 0
+  const missing = missingOf(
+    form.disciplineId === '' && 'дисциплину',
+    !(form.credits > 0) && 'кредиты (больше нуля)',
+    row == null ? form.validFrom === '' && 'дату «Действует с»' : effectiveFrom === '' && 'дату, с которой действует правка',
+  )
+  const isValid = missing.length === 0
 
   async function loadPreview() {
     if (!row) return
@@ -254,6 +261,8 @@ export function CurriculumRowDialog({ curriculum, row, disciplines, onClose, onS
             прежняя закроется с {effectiveFrom}.
           </p>
         )}
+
+        <MissingHint missing={missing} />
 
         <div className="dialog-actions-split">
           <div className="btn-group">

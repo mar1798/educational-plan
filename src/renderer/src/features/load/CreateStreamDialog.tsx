@@ -3,6 +3,8 @@ import type { StudyGroup } from '../../../../shared/ipc/contract'
 import { api } from '../../api/client'
 import { Dialog } from '../../ui/Dialog'
 import { ruCommon } from '../../ui/locale'
+import { MissingHint } from '../../ui/MissingHint'
+import { missingOf } from '../../ui/missing'
 import { notifyError } from '../../ui/toast'
 
 interface CreateStreamDialogProps {
@@ -31,6 +33,8 @@ export function CreateStreamDialog({ semesterId, groups, onClose, onCreated }: C
       return next
     })
   }
+
+  const missing = missingOf(name.trim() === '' && 'название', selected.size < 2 && 'минимум две группы', validFrom === '' && 'дату «Действует с»')
 
   async function submit() {
     setLoading(true)
@@ -61,11 +65,12 @@ export function CreateStreamDialog({ semesterId, groups, onClose, onCreated }: C
           ))}
         </div>
       </div>
+      <MissingHint missing={missing} action="создать" />
       <div className="dialog-actions">
         <button className="btn" onClick={onClose}>
           {ruCommon.cancel}
         </button>
-        <button className="btn btn-primary" disabled={loading || name.trim() === '' || selected.size < 2} onClick={() => void submit()}>
+        <button className="btn btn-primary" disabled={loading || missing.length > 0} onClick={() => void submit()}>
           Создать
         </button>
       </div>

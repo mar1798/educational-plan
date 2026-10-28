@@ -116,6 +116,7 @@ export function CalendarYearPage() {
     if (yearId === '') return
     void api.invoke('semesters:list', { academicYearId: yearId }).then((res) => {
       if (res.ok) setSemesters(res.value)
+      else notifyError(res.error.message)
     })
   }, [yearId])
 

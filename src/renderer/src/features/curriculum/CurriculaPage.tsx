@@ -38,6 +38,7 @@ export function CurriculaPage() {
   useEffect(() => {
     void api.invoke('specialities:list', {}).then((res) => {
       if (res.ok) setSpecialities(res.value)
+      else notifyError(res.error.message)
     })
   }, [])
 

@@ -38,6 +38,9 @@ import { registerTeacherQualificationsHandlers } from './ipc/teacher-qualificati
 import { registerTeachersHandlers } from './ipc/teachers'
 import { registerTeachingLoadHandlers } from './ipc/teaching-load'
 import { applyContentSecurityPolicy, createMainWindow } from './window'
+import { installRuValidationMessages } from '../shared/ipc/validation-messages'
+
+installRuValidationMessages()
 
 function migrationsPath(): string {
   return app.isPackaged ? join(process.resourcesPath, 'drizzle') : join(__dirname, '../../drizzle')

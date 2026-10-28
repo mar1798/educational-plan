@@ -90,11 +90,11 @@ export function ScheduleTemplatePage() {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
 
   useEffect(() => {
-    void api.invoke('groups:list', {}).then((res) => res.ok && setGroups(res.value))
-    void api.invoke('teachers:list', {}).then((res) => res.ok && setTeachers(res.value))
-    void api.invoke('rooms:list', {}).then((res) => res.ok && setRooms(res.value))
+    void api.invoke('groups:list', {}).then((res) => (res.ok ? setGroups(res.value) : notifyError(res.error.message)))
+    void api.invoke('teachers:list', {}).then((res) => (res.ok ? setTeachers(res.value) : notifyError(res.error.message)))
+    void api.invoke('rooms:list', {}).then((res) => (res.ok ? setRooms(res.value) : notifyError(res.error.message)))
     void api.invoke('pairGrid:list', {}).then((res) => {
-      if (!res.ok) return
+      if (!res.ok) return notifyError(res.error.message)
       const enabled = res.value.filter((p) => p.enabled).sort((a, b) => a.pairNo - b.pairNo)
       if (enabled.length > 0) setPairNumbers(enabled.map((p) => p.pairNo))
       setPairTimes(new Map(res.value.map((p) => [p.pairNo, `${p.startsAt}–${p.endsAt}`])))
@@ -104,7 +104,7 @@ export function ScheduleTemplatePage() {
   useEffect(() => {
     if (selectedSemesterId === '') return
     void api.invoke('scheduleTemplates:list', { semesterId: selectedSemesterId }).then((res) => {
-      if (!res.ok) return
+      if (!res.ok) return notifyError(res.error.message)
       setTemplates(res.value)
       setTemplateId((current) => (current !== '' && res.value.some((t) => t.id === current) ? current : (res.value.at(-1)?.id ?? '')))
     })
@@ -350,7 +350,13 @@ export function ScheduleTemplatePage() {
               </option>
             ))}
           </FilterSelect>
-          <button type="button" className="btn" disabled={selectedSemesterId === ''} onClick={() => setShowNewVersion(true)}>
+          <button
+            type="button"
+            className="btn"
+            disabled={selectedSemesterId === ''}
+            title={selectedSemesterId === '' ? 'Сначала выберите семестр' : undefined}
+            onClick={() => setShowNewVersion(true)}
+          >
             + Новая версия
           </button>
           {currentTemplate?.status === 'draft' && (
@@ -373,7 +379,13 @@ export function ScheduleTemplatePage() {
               Удалить версию
             </button>
           )}
-          <button type="button" className="btn btn-primary" disabled={templateId === ''} onClick={() => setShowRollout(true)}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={templateId === ''}
+            title={templateId === '' ? 'Сначала выберите версию шаблона' : undefined}
+            onClick={() => setShowRollout(true)}
+          >
             Раскатать
           </button>
         </div>
@@ -428,16 +440,34 @@ export function ScheduleTemplatePage() {
                 ))}
               </FilterSelect>
             )}
-            <button type="button" className="btn" onClick={() => void handleExportExcel('group')} disabled={cutKind !== 'group' || cutTargetId === ''}>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => void handleExportExcel('group')}
+              disabled={cutKind !== 'group' || cutTargetId === ''}
+              title={cutKind !== 'group' || cutTargetId === '' ? 'Выберите разрез «Группа» и конкретную группу' : undefined}
+            >
               Excel: группа
             </button>
-            <button type="button" className="btn" onClick={() => void handleExportExcel('teacher')} disabled={cutKind !== 'teacher' || cutTargetId === ''}>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => void handleExportExcel('teacher')}
+              disabled={cutKind !== 'teacher' || cutTargetId === ''}
+              title={cutKind !== 'teacher' || cutTargetId === '' ? 'Выберите разрез «Преподаватель» и конкретного преподавателя' : undefined}
+            >
               Excel: преподаватель
             </button>
             <button type="button" className="btn" onClick={() => void handleExportExcel('summary')}>
               Excel: сводное
             </button>
-            <button type="button" className="btn" onClick={() => void handlePrintPdf()} disabled={cutKind !== 'group' || cutTargetId === ''}>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => void handlePrintPdf()}
+              disabled={cutKind !== 'group' || cutTargetId === ''}
+              title={cutKind !== 'group' || cutTargetId === '' ? 'Печать — по одной группе: выберите разрез «Группа» и группу' : undefined}
+            >
               Печать PDF
             </button>
           </div>
