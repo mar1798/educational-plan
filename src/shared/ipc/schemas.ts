@@ -512,6 +512,7 @@ export const teachingLoadSaveInput = withOptimisticId
     subgroupId: z.number().int().positive().nullable(),
     lessonKind: z.enum(['theory', 'practice', 'seminar', 'lab']),
     hoursPlanned: z.number().int().positive('Укажите часы'),
+    sessionHours: z.union([z.literal(2), z.literal(4), z.literal(6)], { message: 'Длительность занятия — 2, 4 или 6 часов' }),
     requiresParallel: z.boolean(),
     roomTypeRequired: roomType.nullable(),
     clinicalModeOverride: z.enum(['full_day', 'block', 'free']).nullable(),

@@ -205,8 +205,26 @@ export class Solution {
     return unit.buildingIdxRequired
   }
 
-  /** Занять ресурсы под юнит в (slot, roomIdx) — вызывается только после успешной проверки hard.ts. */
-  occupy(unit: Unit, slot: number, roomIdx: number | null, academicHours: number): void {
+  /**
+   * Занять ресурсы под юнит, начиная со слота `slot`, — все `span` его пар. Вызывается только
+   * после успешной проверки hard.ts.
+   */
+  occupy(unit: Unit, slot: number, roomIdx: number | null): void {
+    for (let k = 0; k < unit.span; k++) this.occupySlot(unit, slot + k, roomIdx)
+  }
+
+  /** Откатить `occupy` (для перебора вариантов «попробовать — не подошло — вернуть»). */
+  vacate(unit: Unit, slot: number, roomIdx: number | null): void {
+    for (let k = 0; k < unit.span; k++) this.vacateSlot(unit, slot + k, roomIdx)
+  }
+
+  /**
+   * Одна пара занятия. Длинное занятие (п. 48) — это несколько таких пар подряд, и все
+   * счётчики (пары дня, часы недели, здания дня) ведутся по парам: так лимиты и окна
+   * видят шестичасовую практику ровно как три пары.
+   */
+  occupySlot(unit: Unit, slot: number, roomIdx: number | null): void {
+    const academicHours = this.slots[slot]!.academicHours
     const slotBit: BitMask64 = withBit([0, 0], slot)
     this.setMask(this.teacherBusy, unit.teacherIdx * 2, slotBit, true)
     if (roomIdx != null) this.setMask(this.roomBusy, roomIdx * 2, slotBit, true)
@@ -245,8 +263,8 @@ export class Solution {
     }
   }
 
-  /** Откатить занятие ресурсов (для перебора вариантов «попробовать — не подошло — вернуть»). */
-  vacate(unit: Unit, slot: number, roomIdx: number | null, academicHours: number): void {
+  vacateSlot(unit: Unit, slot: number, roomIdx: number | null): void {
+    const academicHours = this.slots[slot]!.academicHours
     const slotBit: BitMask64 = withBit([0, 0], slot)
     this.setMask(this.teacherBusy, unit.teacherIdx * 2, slotBit, false)
     if (roomIdx != null) this.setMask(this.roomBusy, roomIdx * 2, slotBit, false)

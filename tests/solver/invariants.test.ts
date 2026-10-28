@@ -32,11 +32,11 @@ describe('состояние размещения: vacate отменяет occup
     const slotA = slotIndex(1, 1)
     const slotB = slotIndex(1, 2)
 
-    s.occupy(other!, slotB, 1, 2)
+    s.occupy(other!, slotB, 1)
     const before = s.clinicalDay.slice()
 
-    s.occupy(full!, slotA, 1, 2)
-    s.vacate(full!, slotA, 1, 2)
+    s.occupy(full!, slotA, 1)
+    s.vacate(full!, slotA, 1)
 
     expect(Array.from(s.clinicalDay)).toEqual(Array.from(before))
   })
@@ -45,9 +45,9 @@ describe('состояние размещения: vacate отменяет occup
     const input = clinicalInput()
     const [full, other] = input.units
     const s = Solution.forInput(input)
-    s.occupy(other!, slotIndex(1, 2), 1, 2)
-    s.occupy(full!, slotIndex(1, 1), 1, 2)
-    s.vacate(full!, slotIndex(1, 1), 1, 2)
+    s.occupy(other!, slotIndex(1, 2), 1)
+    s.occupy(full!, slotIndex(1, 1), 1)
+    s.vacate(full!, slotIndex(1, 1), 1)
 
     // Занятие в здании 0 в тот же день: full_day-занятия больше нет, запрета быть не должно.
     const probe = makeUnit({ id: 9003, teacherIdx: 1, buildingIdxRequired: 0, attendees: [{ groupIdx: 0, memberMask: [0xffffffff, 0xffffffff] }] })

@@ -62,4 +62,20 @@ describe('services/apply-solution.applySolution (§5.9)', () => {
     // исходный шаблон и его locked-запись не тронуты.
     expect(templateEntriesView(ctx.db, source.id as number)).toHaveLength(1)
   })
+
+  it('длинное занятие (п. 48) ложится в шаблон записью на каждую пару подряд', () => {
+    ctx.db.update(schema.teachingLoad).set({ lessonKind: 'practice', sessionHours: 6 }).where(eq(schema.teachingLoad.id, world.teachingLoadId)).run()
+    const source = createTemplate(ctx.db, { semesterId: world.semesterId, effectiveFrom: '2026-09-01', note: null })
+
+    const input = buildSolverInput(ctx.db, source.id as number, 7)
+    const output = solveGreedy(input)
+    expect(validateSolution(input, output)).toEqual([])
+    expect(output.assignments).toHaveLength(1)
+
+    const result = applySolution(ctx.db, source.id as number, { input, output })
+    expect(result.created).toBe(3)
+    const entries = templateEntriesView(ctx.db, result.templateId)
+    expect(new Set(entries.map((e) => e.dayOfWeek)).size).toBe(1)
+    expect(entries.map((e) => e.pairNo).sort()).toEqual([1, 2, 3])
+  })
 })

@@ -7,7 +7,7 @@
  * решения считается уже настоящей функцией §5.5 — в тех же единицах, что и после этапа 6.
  */
 import type { BlockReason, SolverHooks, SolverInput, SolverOutput, Unit, UnplacedReason, UnplacedUnit } from './model'
-import { PAIRS, slotIndex, WEIGHT_CODES } from './model'
+import { isAlignedStart, PAIRS, slotIndex, WEIGHT_CODES } from './model'
 import { allowsNoRoom, candidateRooms, canPlace } from './hard'
 import { popcount, Solution, testBit } from './occupancy'
 import { computePenalty, type PlacedUnit } from './penalty'
@@ -19,8 +19,10 @@ function constrainednessScore(input: SolverInput, unit: Unit): number {
   const roomOptions = candidateRooms(input, unit).length + (allowsNoRoom(unit) ? 1 : 0)
   const teacher = input.teachers[unit.teacherIdx]!
   const teacherFreedom = input.slots.length - popcount(teacher.unavailable)
-  // Меньше — «стеснённее», крупные группы идут раньше при прочих равных.
-  return roomOptions * 10_000 + teacherFreedom * 100 - unit.students
+  // Меньше — «стеснённее», крупные группы идут раньше при прочих равных. Длинные занятия
+  // (п. 48) — первыми: им нужно 2–3 свободные пары подряд, и на уже заполненной неделе такого
+  // окна может не остаться, а одиночная пара найдёт место и потом.
+  return -unit.span * 10_000_000 + roomOptions * 10_000 + teacherFreedom * 100 - unit.students
 }
 
 function occupiedPairsInDay(hasBit: (pair: number) => boolean): { min: number; max: number } | null {
@@ -35,30 +37,33 @@ function occupiedPairsInDay(hasBit: (pair: number) => boolean): { min: number; m
   return min === -1 ? null : { min, max }
 }
 
-/** Локальная эвристика (не настраиваемый штраф этапа 6): окна + поздние пары. */
+/** Локальная эвристика (не настраиваемый штраф этапа 6): окна + поздние пары + начало длинного занятия. */
 function localScore(input: SolverInput, state: Solution, unit: Unit, slot: number, roomIdx: number | null): number {
   const s = input.slots[slot]!
-  let score = s.pair - 1 // лёгкий штраф за позднюю пару
+  const last = s.pair + unit.span - 1
+  let score = last - 1 // лёгкий штраф за позднюю пару — по последней паре занятия
 
   const teacherRange = occupiedPairsInDay((p) => testBit(state.teacherMask(unit.teacherIdx), slotIndex(s.day, p)))
-  score += gapContribution(teacherRange, s.pair)
+  score += gapContribution(teacherRange, s.pair, last)
 
   for (const a of unit.attendees) {
     const groupRange = occupiedPairsInDay((p) => {
       const m = state.studentMask(a.groupIdx, slotIndex(s.day, p))
       return m[0] !== 0 || m[1] !== 0
     })
-    score += gapContribution(groupRange, s.pair)
+    score += gapContribution(groupRange, s.pair, last)
   }
 
   if (roomIdx == null) score += 5 // предпочитаем занятие с назначенным кабинетом
+  if (!isAlignedStart(s.pair, unit.span)) score += 3 // п. 48: длинная практика — с 1-й или 4-й пары
   return score
 }
 
-function gapContribution(range: { min: number; max: number } | null, pair: number): number {
+/** Окно между уже занятыми парами дня и занятием на парах `from..to`. */
+function gapContribution(range: { min: number; max: number } | null, from: number, to: number): number {
   if (range === null) return 0
-  if (pair >= range.min - 1 && pair <= range.max + 1) return 0
-  return Math.min(Math.abs(pair - range.min), Math.abs(pair - range.max))
+  if (to >= range.min - 1 && from <= range.max + 1) return 0
+  return to < range.min ? range.min - to : from - range.max
 }
 
 interface BestChoice {
@@ -138,10 +143,7 @@ export function solveGreedy(input: SolverInput, hooks: SolverHooks = {}): Solver
   const startedAt = Date.now()
   const state = Solution.forInput(input)
 
-  for (const f of input.fixed) {
-    const academicHours = input.slots[f.slot]!.academicHours
-    state.occupy(f, f.slot, f.roomIdx, academicHours)
-  }
+  for (const f of input.fixed) state.occupy(f, f.slot, f.roomIdx)
 
   const unitsById = new Map(input.units.map((u) => [u.id, u]))
   const order = [...input.units].sort((a, b) => constrainednessScore(input, a) - constrainednessScore(input, b))
@@ -233,8 +235,7 @@ function placeSingle(
 ): void {
   const { best, tried, blocked } = pickBest(input, state, unit, rng)
   if (best) {
-    const academicHours = input.slots[best.slot]!.academicHours
-    state.occupy(unit, best.slot, best.roomIdx, academicHours)
+    state.occupy(unit, best.slot, best.roomIdx)
     assignments.push({ unitId: unit.id, slot: best.slot, roomIdx: best.roomIdx })
   } else {
     unplaced.push({ unitId: unit.id, reason: dominantReason(blocked), details: { triedSlots: tried, blockedBy: [...new Set(blocked)] } })
@@ -260,7 +261,6 @@ function placePair(
 
   for (const slotInfo of input.slots) {
     const slot = slotInfo.idx
-    const academicHours = slotInfo.academicHours
     for (const roomA of roomsA) {
       tried++
       const reasonA = canPlace(input, state, a, slot, roomA)
@@ -273,7 +273,7 @@ function placePair(
       // Без временного `occupy` проверка `b` шла по состоянию без `a`, и пара уезжала в слот
       // с жёстким нарушением (teacher_busy / student_busy) — валидатор ловил это уже на выходе.
       const scoreA = localScore(input, state, a, slot, roomA)
-      state.occupy(a, slot, roomA, academicHours)
+      state.occupy(a, slot, roomA)
       try {
         for (const roomB of roomsB) {
           const reasonB = canPlace(input, state, b, slot, roomB)
@@ -291,15 +291,14 @@ function placePair(
           }
         }
       } finally {
-        state.vacate(a, slot, roomA, academicHours)
+        state.vacate(a, slot, roomA)
       }
     }
   }
 
   if (best) {
-    const academicHours = input.slots[best.slot]!.academicHours
-    state.occupy(a, best.slot, best.roomA, academicHours)
-    state.occupy(b, best.slot, best.roomB, academicHours)
+    state.occupy(a, best.slot, best.roomA)
+    state.occupy(b, best.slot, best.roomB)
     assignments.push({ unitId: a.id, slot: best.slot, roomIdx: best.roomA })
     assignments.push({ unitId: b.id, slot: best.slot, roomIdx: best.roomB })
   } else {

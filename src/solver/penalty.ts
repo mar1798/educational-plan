@@ -1,5 +1,5 @@
 /**
- * Функция штрафа (§5.5 PLAN.md): все семь… точнее, десять размеченных в `Weights` мягких
+ * Функция штрафа (§5.5 PLAN.md): все одиннадцать размеченных в `Weights` мягких
  * критериев, каждый — в «сырых» единицах (окна, лишние дни, занятия) плюс взвешенная сумма.
  * Намеренно отдельный проход по состоянию `Solution` (как и `validate.ts` — §9.1 уровень 2):
  * `computePenalty` пересчитывает решение целиком и используется как эталон в тестах локального
@@ -7,7 +7,7 @@
  * фрагменту (группа+день, преподаватель+день), не вызывая эту функцию на каждом ходу.
  */
 import type { GroupInfo, SolverInput, TeacherInfo, Unit, WeightCode, Weights } from './model'
-import { DAYS, PAIRS, POSITIONS, slotIndex } from './model'
+import { DAYS, isAlignedStart, PAIRS, POSITIONS, slotIndex } from './model'
 import type { Solution } from './occupancy'
 import { testBit } from './occupancy'
 
@@ -34,6 +34,7 @@ export function zeroBreakdown(): RawBreakdown {
     clinicalBlockStart: 0,
     roomMissing: 0,
     teacherDays: 0,
+    sessionStart: 0,
   }
 }
 
@@ -147,10 +148,16 @@ export function computeRawBreakdown(input: SolverInput, state: Solution, placed:
   }
   for (const p of placed) {
     const s = input.slots[p.slot]!
-    raw.difficultyEarly += p.unit.difficulty * Math.max(0, s.pair - 2)
-    if (s.pair >= 5) raw.latePair += 1
+    // Пары длинного занятия (п. 48) штрафуются как отдельные пары: шестичасовая практика
+    // с 4-й пары — это две поздние пары, а не одно «позднее занятие».
+    for (let k = 0; k < p.unit.span; k++) {
+      const pair = s.pair + k
+      raw.difficultyEarly += p.unit.difficulty * Math.max(0, pair - 2)
+      if (pair >= 5) raw.latePair += 1
+      raw.teacherPreference += softViolation(input.teachers[p.unit.teacherIdx]!, p.slot + k)
+    }
     if (p.roomIdx == null) raw.roomMissing += 1
-    raw.teacherPreference += softViolation(input.teachers[p.unit.teacherIdx]!, p.slot)
+    if (!isAlignedStart(s.pair, p.unit.span)) raw.sessionStart += 1
 
     const day = s.day
     for (const a of p.unit.attendees) {

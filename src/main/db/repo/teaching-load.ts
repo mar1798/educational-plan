@@ -81,6 +81,7 @@ export interface TeachingLoadInput {
   subgroupId: number | null
   lessonKind: 'theory' | 'practice' | 'seminar' | 'lab'
   hoursPlanned: number
+  sessionHours: 2 | 4 | 6
   requiresParallel: boolean
   roomTypeRequired: string | null
   clinicalModeOverride: 'full_day' | 'block' | 'free' | null
@@ -102,6 +103,24 @@ export function saveTeachingLoad(
 ): { row: Record<string, unknown>; teacherHoursOverYear: number | null } {
   if ((input.groupId == null) === (input.streamId == null)) {
     throw new LoadValidationError('Укажите либо группу, либо поток — ровно один вариант')
+  }
+
+  // Длинными бывают только практические занятия (п. 48); у остальных видов 4–6 часов
+  // подряд — ошибка ввода, а не особый режим.
+  if (input.lessonKind !== 'practice' && input.sessionHours !== 2) {
+    throw new LoadValidationError('Длительность 4 или 6 часов бывает только у практических занятий')
+  }
+
+  // Параллельные подгруппы (§4.3 pairedLoadId) идут в одни и те же пары: при разной длине одна
+  // подгруппа сидела бы без занятия, а snapshot связку таких строк молча не строит.
+  if (existing) {
+    const current = tx.select().from(teachingLoad).where(eq(teachingLoad.id, existing.id)).get()
+    const partner = current?.pairedLoadId != null ? tx.select().from(teachingLoad).where(eq(teachingLoad.id, current.pairedLoadId)).get() : undefined
+    if (partner && partner.sessionHours !== input.sessionHours) {
+      throw new LoadValidationError(
+        `У параллельной подгруппы занятие длится ${partner.sessionHours} ч — длительность у пары подгрупп должна совпадать`,
+      )
+    }
   }
 
   const t = tx.select().from(teacher).where(eq(teacher.id, input.teacherId)).get()

@@ -54,6 +54,9 @@ export const teachingLoad = sqliteTable(
     subgroupId: integer('subgroup_id').references(() => subgroup.id, { onDelete: 'restrict' }),
     lessonKind: text('lesson_kind').notNull().$type<'theory' | 'practice' | 'seminar' | 'lab'>(),
     hoursPlanned: integer('hours_planned').notNull(),
+    // Сколько академических часов идёт одно занятие, пары подряд (п. 48): у практики 2/4/6,
+    // у прочих видов всегда 2 — проверяется в сервисе.
+    sessionHours: integer('session_hours').notNull().default(2).$type<2 | 4 | 6>(),
     requiresParallel: integer('requires_parallel', { mode: 'boolean' }).notNull().default(false),
     pairedLoadId: integer('paired_load_id').references((): AnySQLiteColumn => teachingLoad.id, { onDelete: 'restrict' }),
     roomTypeRequired: text('room_type_required'),

@@ -14,6 +14,20 @@ export function slotIndex(day: number, pair: number): number {
   return (day - 1) * PAIRS + (pair - 1)
 }
 
+/** Занятие из `span` пар, начатое с пары `pair`, укладывается в день. */
+export function fitsInDay(pair: number, span: number): boolean {
+  return pair + span - 1 <= PAIRS
+}
+
+/**
+ * Начало длинного занятия «по сетке» (п. 48): 6 часов — с 1-й или 4-й пары (08:00 и 13:00
+ * в сетке звонков по умолчанию), 4 часа — с 1-й, 3-й или 5-й, то есть по сдвоенным парам.
+ * Правило задано номерами пар, а не временем: время звонков правится в настройках (п. 40).
+ */
+export function isAlignedStart(pair: number, span: number): boolean {
+  return span <= 1 || (pair - 1) % span === 0
+}
+
 /**
  * Битовая маска на 64 позиций: слово [0] — биты 0..31, слово [1] — биты 32..63.
  * Используется и для масок слотов (0..35 из 64 доступных бит), и для масок позиций
@@ -34,6 +48,7 @@ export interface Weights {
   clinicalBlockStart: number
   roomMissing: number
   teacherDays: number
+  sessionStart: number
 }
 
 export const DEFAULT_WEIGHTS: Weights = {
@@ -47,6 +62,7 @@ export const DEFAULT_WEIGHTS: Weights = {
   clinicalBlockStart: 3,
   roomMissing: 20,
   teacherDays: 2,
+  sessionStart: 3,
 }
 
 export type WeightCode = keyof Weights
@@ -63,6 +79,7 @@ export const WEIGHT_CODES: Record<WeightCode, string> = {
   clinicalBlockStart: 'clinical_block_start',
   roomMissing: 'room_missing',
   teacherDays: 'teacher_days',
+  sessionStart: 'session_start',
 }
 
 export type RoomType = 'lecture' | 'practice' | 'seminar' | 'lab' | 'phantom' | 'computer' | 'gym'
@@ -138,10 +155,16 @@ export interface Unit {
   lessonKind: LessonKind
   parity: Parity
   pairedUnitId: number | null
+  /**
+   * Сколько пар подряд идёт занятие (п. 48: практика по 4–6 часов — 2–3 пары). Назначение
+   * указывает первую пару, остальные — следующие слоты того же дня.
+   */
+  span: number
 }
 
 export interface Assignment {
   unitId: number
+  /** Первый слот занятия; при `span > 1` заняты и следующие за ним. */
   slot: number
   roomIdx: number | null
 }

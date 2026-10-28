@@ -318,6 +318,7 @@ export interface TeachingLoad {
   subgroupId: number | null
   lessonKind: 'theory' | 'practice' | 'seminar' | 'lab'
   hoursPlanned: number
+  sessionHours: 2 | 4 | 6
   requiresParallel: boolean
   pairedLoadId: number | null
   roomTypeRequired: Room['roomType'] | null
@@ -1081,6 +1082,7 @@ export interface TeachingLoadSaveInput {
   subgroupId: number | null
   lessonKind: TeachingLoad['lessonKind']
   hoursPlanned: number
+  sessionHours: TeachingLoad['sessionHours']
   requiresParallel: boolean
   roomTypeRequired: Room['roomType'] | null
   clinicalModeOverride: 'full_day' | 'block' | 'free' | null

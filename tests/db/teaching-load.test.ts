@@ -25,6 +25,7 @@ const baseInput = (world: MinimalWorld) => ({
   subgroupId: null,
   lessonKind: 'theory' as const,
   hoursPlanned: 10,
+  sessionHours: 2 as const,
   requiresParallel: false,
   roomTypeRequired: null,
   clinicalModeOverride: null,
@@ -57,6 +58,25 @@ describe('нагрузка: квалификация, недельный лим�
     ctx.db.insert(schema.teacherQualification).values({ teacherId: world.teacherId, disciplineId: world.disciplineId, validFrom: '2020-01-01' }).run()
     const { row } = saveTeachingLoad(ctx.db, baseInput(world), '2026-09-01', null)
     expect(row.hoursPlanned).toBe(10)
+  })
+
+  it('длительность 4–6 часов — только у практики (п. 48)', () => {
+    ctx.db.insert(schema.teacherQualification).values({ teacherId: world.teacherId, disciplineId: world.disciplineId, validFrom: '2020-01-01' }).run()
+    expect(() => saveTeachingLoad(ctx.db, { ...baseInput(world), sessionHours: 6 }, '2026-09-01', null)).toThrow(LoadValidationError)
+    const { row } = saveTeachingLoad(ctx.db, { ...baseInput(world), lessonKind: 'practice', sessionHours: 6 }, '2026-09-01', null)
+    expect(row.sessionHours).toBe(6)
+  })
+
+  it('у параллельных подгрупп длительность занятия должна совпадать (п. 48)', () => {
+    ctx.db.insert(schema.teacherQualification).values({ teacherId: world.teacherId, disciplineId: world.disciplineId, validFrom: '2020-01-01' }).run()
+    const practice = { ...baseInput(world), lessonKind: 'practice' as const, sessionHours: 4 as const }
+    const a = saveTeachingLoad(ctx.db, practice, '2026-09-01', null).row as { id: number; rowVersion: number }
+    const b = saveTeachingLoad(ctx.db, practice, '2026-09-01', null).row as { id: number }
+    ctx.db.update(schema.teachingLoad).set({ pairedLoadId: b.id }).where(eq(schema.teachingLoad.id, a.id)).run()
+
+    expect(() => saveTeachingLoad(ctx.db, { ...practice, sessionHours: 6 }, '2026-09-01', a)).toThrow(/параллельной подгруппы/)
+    const { row } = saveTeachingLoad(ctx.db, { ...practice, hoursPlanned: 12 }, '2026-09-01', a)
+    expect(row.hoursPlanned).toBe(12)
   })
 
   it('блокирует превышение недельного лимита группы (45ч × число недель семестра)', () => {

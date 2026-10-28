@@ -13,7 +13,7 @@
  */
 import { allowsNoRoom, candidateRooms, canPlace } from './hard'
 import type { Assignment, SolverHooks, SolverInput, SolverOutput, StopReason, Unit, UnplacedUnit } from './model'
-import { POSITIONS, slotIndex, WEIGHT_CODES } from './model'
+import { fitsInDay, isAlignedStart, POSITIONS, slotIndex, WEIGHT_CODES } from './model'
 import { intersects, Solution, testBit } from './occupancy'
 import {
   clinicalScoreForGroup,
@@ -135,7 +135,7 @@ export async function runLocalSearch(input: SolverInput, greedy: SolverOutput, h
   const weights = input.weights
 
   let state = Solution.forInput(input)
-  for (const f of input.fixed) state.occupy(f, f.slot, f.roomIdx, input.slots[f.slot]!.academicHours)
+  for (const f of input.fixed) state.occupy(f, f.slot, f.roomIdx)
 
   let assignments = new Map<number, Placement>()
   let placedPool = new IdPool()
@@ -159,21 +159,27 @@ export async function runLocalSearch(input: SolverInput, greedy: SolverOutput, h
   for (const a of greedy.assignments) {
     const unit = unitsById.get(a.unitId)
     if (!unit) continue
-    state.occupy(unit, a.slot, a.roomIdx, input.slots[a.slot]!.academicHours)
+    state.occupy(unit, a.slot, a.roomIdx)
     assignments.set(a.unitId, { slot: a.slot, roomIdx: a.roomIdx })
     placedPool.add(a.unitId)
-    let occ = slotOccupants.get(a.slot)
-    if (!occ) {
-      occ = new Set()
-      slotOccupants.set(a.slot, occ)
-    }
-    occ.add(a.unitId)
+    addOccupant(unit, a.slot)
     const day = input.slots[a.slot]!.day
     for (const att of unit.attendees) addToSpread(att.groupIdx, unit.disciplineIdx, day, 1)
   }
   for (const u of greedy.unplaced) unplacedPool.add(u.unitId)
 
   const enabledSlots = input.slots.filter((s) => s.enabled).map((s) => s.idx)
+  // Слоты, с которых занятие длиной `span` пар вообще помещается в день (п. 48): сэмплировать
+  // заведомо невозможные начала — впустую тратить попытки хода.
+  const startsBySpan = new Map<number, number[]>()
+  function startsFor(span: number): number[] {
+    let list = startsBySpan.get(span)
+    if (!list) {
+      list = enabledSlots.filter((idx) => fitsInDay(input.slots[idx]!.pair, span))
+      startsBySpan.set(span, list)
+    }
+    return list
+  }
 
   function placedList(): PlacedUnit[] {
     const out: PlacedUnit[] = []
@@ -238,13 +244,19 @@ export async function runLocalSearch(input: SolverInput, greedy: SolverOutput, h
 
   function perUnitScore(unit: Unit, slot: number, roomIdx: number | null): number {
     const s = input.slots[slot]!
-    let v = unit.difficulty * Math.max(0, s.pair - 2) * weights.difficultyEarly
-    if (s.pair >= 5) v += weights.latePair
-    if (roomIdx == null) v += weights.roomMissing
     const teacher = input.teachers[unit.teacherIdx]!
+    let v = 0
     let soft = 0
-    for (const rec of teacher.softUnavailable) if (testBit(rec.mask, slot)) soft += rec.weight
+    // По каждой паре занятия — так же, как `computeRawBreakdown`.
+    for (let k = 0; k < unit.span; k++) {
+      const pair = s.pair + k
+      v += unit.difficulty * Math.max(0, pair - 2) * weights.difficultyEarly
+      if (pair >= 5) v += weights.latePair
+      for (const rec of teacher.softUnavailable) if (testBit(rec.mask, slot + k)) soft += rec.weight
+    }
     v += soft * weights.teacherPreference
+    if (roomIdx == null) v += weights.roomMissing
+    if (!isAlignedStart(s.pair, unit.span)) v += weights.sessionStart
     return v
   }
 
@@ -288,15 +300,13 @@ export async function runLocalSearch(input: SolverInput, greedy: SolverOutput, h
   }
 
   function occupyAndSpread(unit: Unit, p: Placement): void {
-    const hours = input.slots[p.slot]!.academicHours
-    state.occupy(unit, p.slot, p.roomIdx, hours)
+    state.occupy(unit, p.slot, p.roomIdx)
     const day = input.slots[p.slot]!.day
     for (const a of unit.attendees) addToSpread(a.groupIdx, unit.disciplineIdx, day, 1)
   }
 
   function vacateAndSpread(unit: Unit, p: Placement): void {
-    const hours = input.slots[p.slot]!.academicHours
-    state.vacate(unit, p.slot, p.roomIdx, hours)
+    state.vacate(unit, p.slot, p.roomIdx)
     const day = input.slots[p.slot]!.day
     for (const a of unit.attendees) addToSpread(a.groupIdx, unit.disciplineIdx, day, -1)
   }
@@ -351,28 +361,33 @@ export async function runLocalSearch(input: SolverInput, greedy: SolverOutput, h
     return (afterScopeSum - beforeScopeSum) + (afterPerUnit - beforePerUnit) + deltaUnplaced * UNPLACED_PENALTY
   }
 
-  function addOccupant(unitId: number, slot: number): void {
-    let s = slotOccupants.get(slot)
-    if (!s) {
-      s = new Set()
-      slotOccupants.set(slot, s)
+  /** Длинное занятие числится во всех своих слотах — иначе `findBlocker` не видел бы его хвост. */
+  function addOccupant(unit: Unit, start: number): void {
+    for (let slot = start; slot < start + unit.span; slot++) {
+      let s = slotOccupants.get(slot)
+      if (!s) {
+        s = new Set()
+        slotOccupants.set(slot, s)
+      }
+      s.add(unit.id)
     }
-    s.add(unitId)
   }
 
-  function removeOccupant(unitId: number, slot: number): void {
-    const s = slotOccupants.get(slot)
-    if (!s) return
-    s.delete(unitId)
-    if (s.size === 0) slotOccupants.delete(slot)
+  function removeOccupant(unit: Unit, start: number): void {
+    for (let slot = start; slot < start + unit.span; slot++) {
+      const s = slotOccupants.get(slot)
+      if (!s) continue
+      s.delete(unit.id)
+      if (s.size === 0) slotOccupants.delete(slot)
+    }
   }
 
   function commit(moves: PlannedMove[]): void {
     for (const m of moves) {
       const id = m.unit.id
-      if (m.from) removeOccupant(id, m.from.slot)
+      if (m.from) removeOccupant(m.unit, m.from.slot)
       if (m.to) {
-        addOccupant(id, m.to.slot)
+        addOccupant(m.unit, m.to.slot)
         assignments.set(id, m.to)
         unplacedPool.remove(id)
         placedPool.add(id)
@@ -427,8 +442,10 @@ export async function runLocalSearch(input: SolverInput, greedy: SolverOutput, h
     // почти всегда только портит решение, и отжиг тонет в потоке бессмысленных ходов.
     let bestSlot = -1
     let bestScore = Infinity
+    const starts = startsFor(unit.span)
+    if (starts.length === 0) return null
     for (let i = 0; i < MOVE_SAMPLE; i++) {
-      const candidate = enabledSlots[rng.nextInt(enabledSlots.length)]!
+      const candidate = starts[rng.nextInt(starts.length)]!
       if (candidate === from.slot) continue
       const score = heuristicSlotScore(unit, candidate)
       if (score < bestScore) {
@@ -493,10 +510,12 @@ export async function runLocalSearch(input: SolverInput, greedy: SolverOutput, h
     // на одного преподавателя/кабинет мимо пары; такую ситуацию чинит только `move`.
     if (partner && assignments.has(partner.id)) return null
 
-    const attempts = Math.min(INSERT_SAMPLE, enabledSlots.length)
+    const starts = startsFor(unit.span)
+    if (starts.length === 0) return null
+    const attempts = Math.min(INSERT_SAMPLE, starts.length)
     const tried = new Set<number>()
     for (let i = 0; i < attempts; i++) {
-      const slot = enabledSlots[rng.nextInt(enabledSlots.length)]!
+      const slot = starts[rng.nextInt(starts.length)]!
       if (tried.has(slot)) continue
       tried.add(slot)
       const roomIdx = pickRoom(unit, rng, null)
@@ -513,7 +532,7 @@ export async function runLocalSearch(input: SolverInput, greedy: SolverOutput, h
     // Ruin & recreate: вытеснить занимающий слот юнит. Для пары освободить нужно сразу два
     // слота-ресурса, и шанс угадать оба ничтожен — ограничиваемся одиночными юнитами.
     if (partner) return null
-    const slot = enabledSlots[rng.nextInt(enabledSlots.length)]!
+    const slot = starts[rng.nextInt(starts.length)]!
     const blocker = findBlocker(unit, slot)
     if (!blocker) return null
     const blockerPos = assignments.get(blocker.id)
@@ -591,14 +610,7 @@ export async function runLocalSearch(input: SolverInput, greedy: SolverOutput, h
     unplacedReasons.clear()
     for (const [id, u] of snap.unplacedReasons) unplacedReasons.set(id, u)
     slotOccupants = new Map()
-    for (const [id, p] of assignments) {
-      let occ = slotOccupants.get(p.slot)
-      if (!occ) {
-        occ = new Set()
-        slotOccupants.set(p.slot, occ)
-      }
-      occ.add(id)
-    }
+    for (const [id, p] of assignments) addOccupant(unitsById.get(id)!, p.slot)
     penalty = snap.penalty
   }
 

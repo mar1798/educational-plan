@@ -100,31 +100,35 @@ export function applySolution(db: Db, sourceTemplateId: number, draft: { input: 
         })
         .filter((x): x is { groupId: number; posFrom: number; posTo: number } => x !== null)
 
-      const candidate: SlotEntry = {
-        id: nextEntryId--,
-        dayOfWeek: day,
-        pairNo: pair,
-        weekParity: unit.parity,
-        teacherId: teacherRow.id,
-        roomId,
-        attendees,
-      }
+      // Длинное занятие (п. 48) ложится в шаблон записью на каждую пару: шаблон, раскатка в
+      // `lesson`, конфликты и печать устроены «запись = пара», и менять это ради длины не нужно.
+      for (let k = 0; k < unit.span; k++) {
+        const candidate: SlotEntry = {
+          id: nextEntryId--,
+          dayOfWeek: day,
+          pairNo: pair + k,
+          weekParity: unit.parity,
+          teacherId: teacherRow.id,
+          roomId,
+          attendees,
+        }
 
-      // Последний рубеж (§5.9): к этому моменту validateSolution уже должен был отсечь все
-      // жёсткие нарушения — совпадение здесь означало бы ошибку в солвере или снимке.
-      const conflicts = findConflicts(candidate, accumulated)
-      if (conflicts.length > 0) {
-        throw new ScheduleConflictError(conflicts, `Генерация вернула конфликтующее решение (юнит #${unit.id}) — сообщите разработчику`)
-      }
-      accumulated.push(candidate)
+        // Последний рубеж (§5.9): к этому моменту validateSolution уже должен был отсечь все
+        // жёсткие нарушения — совпадение здесь означало бы ошибку в солвере или снимке.
+        const conflicts = findConflicts(candidate, accumulated)
+        if (conflicts.length > 0) {
+          throw new ScheduleConflictError(conflicts, `Генерация вернула конфликтующее решение (юнит #${unit.id}) — сообщите разработчику`)
+        }
+        accumulated.push(candidate)
 
-      createRow(
-        tx,
-        templateEntry,
-        { templateId: newTemplateId, dayOfWeek: day, pairNo: pair, teachingLoadId: unit.loadIdx, roomId, weekParity: unit.parity, isLocked: false, source: 'solver' },
-        ctx,
-      )
-      createdCount++
+        createRow(
+          tx,
+          templateEntry,
+          { templateId: newTemplateId, dayOfWeek: day, pairNo: pair + k, teachingLoadId: unit.loadIdx, roomId, weekParity: unit.parity, isLocked: false, source: 'solver' },
+          ctx,
+        )
+        createdCount++
+      }
     }
 
     return { templateId: newTemplateId, created: createdCount }

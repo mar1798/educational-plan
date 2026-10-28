@@ -26,6 +26,7 @@ export const WEIGHT_TITLES_RU: Record<WeightKey, { title: string; description: s
   clinicalBlockStart: { title: 'Начинать блок на базе с первой пары', description: 'Штраф за сдвиг начала блока на клинической базе позже первой пары' },
   roomMissing: { title: 'Назначать кабинет', description: 'Штраф за занятие без назначенного кабинета там, где он не является жёстко обязательным' },
   teacherDays: { title: 'Беречь дни преподавателей', description: 'Штраф за рабочие дни преподавателя сверх минимально необходимых при его нагрузке' },
+  sessionStart: { title: 'Длинную практику — с начала полудня', description: 'Штраф, если 6-часовое занятие начинается не с 1-й или 4-й пары, а 4-часовое — не со сдвоенных пар (1–2, 3–4, 5–6)' },
 }
 
 const DEFAULT_ROWS = (Object.keys(WEIGHT_CODES) as WeightKey[]).map((key) => ({

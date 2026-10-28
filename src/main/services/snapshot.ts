@@ -62,17 +62,28 @@ function unionBit(mask: readonly [number, number], bit: number): readonly [numbe
 }
 
 /**
+ * Пар подряд в одном занятии строки нагрузки (п. 48). Длинной бывает только практика —
+ * сервис нагрузки другого не пропускает, но запись могла прийти и мимо него (восстановленный
+ * файл базы), поэтому вид проверяется и здесь.
+ */
+function sessionSpan(load: { lessonKind: string; sessionHours: number }): number {
+  return load.lessonKind === 'practice' ? Math.max(1, Math.round(load.sessionHours / 2)) : 1
+}
+
+/**
  * База/остаток недельных занятий из плановых часов (§5.2). `weeksCount` приходит из БД, и
  * ноль там мгновенно превращает `base` в Infinity, а цикл создания юнитов — в бесконечный:
  * главный процесс залипает без единого сообщения. Схема БД нуля не запрещает (`default 18`,
  * без CHECK), zod прикрывает только ввод через IPC — восстановленный или отредактированный
  * извне файл базы проходит мимо него, поэтому проверка стоит здесь, у самого расчёта.
  */
-function lessonsFromHours(hoursPlanned: number, weeksCount: number): { base: number; rest: number } {
+function lessonsFromHours(hoursPlanned: number, weeksCount: number, sessionHours: number): { base: number; rest: number } {
   if (!Number.isFinite(weeksCount) || weeksCount < 1) {
     throw new Error(`В семестре указано ${weeksCount} недель — расписание рассчитать нельзя, исправьте число недель семестра`)
   }
-  const lessonsTotal = Math.ceil(hoursPlanned / 2)
+  // Занятие длиной `sessionHours` (п. 48). Остаток, не кратный длительности, округляется вверх
+  // до целого занятия: недельный шаблон не умеет «одно занятие покороче за семестр».
+  const lessonsTotal = Math.ceil(hoursPlanned / sessionHours)
   const base = Math.floor(lessonsTotal / weeksCount)
   const rest = lessonsTotal - weeksCount * base
   return { base, rest }
@@ -159,24 +170,44 @@ export function buildSolverInput(tx: DbLike, templateId: number, seed = Date.now
   const lockedEntries = tx.select().from(templateEntry).where(and(eq(templateEntry.templateId, templateId), eq(templateEntry.isLocked, true))).all()
   const lockedCountByLoad = new Map<number, number>()
   const fixed: FixedPlacement[] = []
+  // Запись шаблона — одна пара, а длинное занятие (п. 48) — несколько записей подряд. Соседние
+  // пары одной нагрузки в одном кабинете склеиваются обратно в занятия: иначе три пары одной
+  // практики считались бы тремя занятиями — и в недостающих часах, и в «размазанной» дисциплине.
+  const lockedRuns = new Map<string, (typeof lockedEntries)[number][]>()
   for (const e of lockedEntries) {
-    const load = tx.select().from(teachingLoad).where(eq(teachingLoad.id, e.teachingLoadId)).get()
+    const key = `${e.teachingLoadId}|${e.dayOfWeek}|${e.weekParity}|${e.roomId ?? ''}`
+    const run = lockedRuns.get(key)
+    if (run) run.push(e)
+    else lockedRuns.set(key, [e])
+  }
+  for (const run of lockedRuns.values()) {
+    const load = tx.select().from(teachingLoad).where(eq(teachingLoad.id, run[0]!.teachingLoadId)).get()
     if (!load) continue
-    lockedCountByLoad.set(load.id, (lockedCountByLoad.get(load.id) ?? 0) + 1)
-    // Закреплённая запись занимает преподавателя и кабинет независимо от того, остались ли
-    // у неё слушатели: группу могли закрыть или объединить. Раньше такая запись выпадала из
-    // `fixed`, солвер считал слот свободным, `validateSolution` нарушения не видел — и через
-    // минуту расчёта applySolution падал на findConflicts с «сообщите разработчику».
-    const unit = unitFromLoad(load, 'all', e.id * -1, { allowEmptyAttendees: true })
-    if (!unit) continue
-    fixed.push({ ...unit, slot: slotIndex(e.dayOfWeek, e.pairNo), roomIdx: e.roomId != null ? roomIdxById.get(e.roomId) ?? null : null })
+    const span = sessionSpan(load)
+    run.sort((a, b) => a.pairNo - b.pairNo)
+    for (let i = 0; i < run.length; ) {
+      let len = 1
+      while (len < span && i + len < run.length && run[i + len]!.pairNo === run[i]!.pairNo + len) len++
+      const e = run[i]!
+      i += len
+      // Неполное занятие (завуч закрепил две пары из трёх) держит свои слоты, но часов не
+      // закрывает — солвер поставит занятие целиком в другом месте.
+      if (len === span) lockedCountByLoad.set(load.id, (lockedCountByLoad.get(load.id) ?? 0) + 1)
+      // Закреплённая запись занимает преподавателя и кабинет независимо от того, остались ли
+      // у неё слушатели: группу могли закрыть или объединить. Раньше такая запись выпадала из
+      // `fixed`, солвер считал слот свободным, `validateSolution` нарушения не видел — и через
+      // минуту расчёта applySolution падал на findConflicts с «сообщите разработчику».
+      const unit = unitFromLoad(load, 'all', e.id * -1, { allowEmptyAttendees: true, span: len })
+      if (!unit) continue
+      fixed.push({ ...unit, slot: slotIndex(e.dayOfWeek, e.pairNo), roomIdx: e.roomId != null ? roomIdxById.get(e.roomId) ?? null : null })
+    }
   }
 
   function unitFromLoad(
     load: typeof teachingLoad.$inferSelect,
     parity: 'all' | 'odd' | 'even',
     id: number,
-    opts: { allowEmptyAttendees?: boolean } = {},
+    opts: { allowEmptyAttendees?: boolean; span?: number } = {},
   ): Unit | null {
     const row = tx.select().from(curriculumRow).where(eq(curriculumRow.id, load.curriculumRowId)).get()
     const disc = row ? tx.select().from(discipline).where(eq(discipline.id, row.disciplineId)).get() : undefined
@@ -208,6 +239,7 @@ export function buildSolverInput(tx: DbLike, templateId: number, seed = Date.now
       lessonKind: load.lessonKind,
       parity,
       pairedUnitId: null,
+      span: opts.span ?? sessionSpan(load),
     }
   }
 
@@ -226,7 +258,7 @@ export function buildSolverInput(tx: DbLike, templateId: number, seed = Date.now
   let nextId = 1
 
   for (const load of loads) {
-    const { base, rest } = lessonsFromHours(load.hoursPlanned, sem.weeksCount)
+    const { base, rest } = lessonsFromHours(load.hoursPlanned, sem.weeksCount, sessionSpan(load) * 2)
     const locked = lockedCountByLoad.get(load.id) ?? 0
     const wantedAll = base
     const wantedExtra = rest > 0 ? 1 : 0
@@ -255,7 +287,9 @@ export function buildSolverInput(tx: DbLike, templateId: number, seed = Date.now
     if (mine.length === 1 && theirs.length === 1) {
       const a = units.find((u) => u.id === mine[0])
       const b = units.find((u) => u.id === theirs[0])
-      if (a && b) {
+      // Разная длина занятия (п. 48) — сервис нагрузки такое не сохранит, но файл базы мог
+      // прийти мимо него: связанная пара с разным `span` заняла бы разные пары дня.
+      if (a && b && a.span === b.span) {
         a.pairedUnitId = b.id
         b.pairedUnitId = a.id
       }

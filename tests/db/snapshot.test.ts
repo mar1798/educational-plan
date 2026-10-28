@@ -71,6 +71,31 @@ describe('services/snapshot.buildSolverInput (§5.5)', () => {
     expect(mine).toHaveLength(2) // 3 нужных минус 1 уже закреплённый
   })
 
+  it('6-часовая практика (п. 48): часы делятся на занятия по 6 ч, юнит занимает 3 пары', () => {
+    ctx.db.update(schema.teachingLoad).set({ lessonKind: 'practice', sessionHours: 6 }).where(eq(schema.teachingLoad.id, world.teachingLoadId)).run()
+    const tmpl = createTemplate(ctx.db, { semesterId: world.semesterId, effectiveFrom: '2026-09-01', note: null })
+    // 80 ч / 6 = 14 занятий на 18 недель → 0 еженедельных + 1 через неделю (14 > 9 → нечётные).
+    const mine = buildSolverInput(ctx.db, tmpl.id as number, 1).units.filter((u) => u.loadIdx === world.teachingLoadId)
+    expect(mine).toHaveLength(1)
+    expect(mine[0]!.span).toBe(3)
+    expect(mine[0]!.parity).toBe('odd')
+  })
+
+  it('закреплённые пары длинного занятия склеиваются в одно fixed и закрывают его часы', () => {
+    ctx.db.update(schema.teachingLoad).set({ lessonKind: 'practice', sessionHours: 6 }).where(eq(schema.teachingLoad.id, world.teachingLoadId)).run()
+    const tmpl = createTemplate(ctx.db, { semesterId: world.semesterId, effectiveFrom: '2026-09-01', note: null })
+    for (const pairNo of [1, 2, 3]) {
+      const e = placeEntry(ctx.db, { templateId: tmpl.id as number, teachingLoadId: world.teachingLoadId, dayOfWeek: 2, pairNo, weekParity: 'all', roomId: world.roomId })
+      ctx.db.update(schema.templateEntry).set({ isLocked: true }).where(eq(schema.templateEntry.id, e.id as number)).run()
+    }
+
+    const input = buildSolverInput(ctx.db, tmpl.id as number, 1)
+    expect(input.fixed).toHaveLength(1)
+    expect(input.fixed[0]!.span).toBe(3)
+    expect(input.fixed[0]!.slot).toBe((2 - 1) * 6 + (1 - 1))
+    expect(input.units.filter((u) => u.loadIdx === world.teachingLoadId)).toHaveLength(0)
+  })
+
   it('индексы кабинетов/зданий/групп стабильны и соответствуют БД', () => {
     const tmpl = createTemplate(ctx.db, { semesterId: world.semesterId, effectiveFrom: '2026-09-01', note: null })
     const input = buildSolverInput(ctx.db, tmpl.id as number, 1)

@@ -43,7 +43,7 @@ describe('hard.canPlace — по одному тесту на ограничен
     const unit = makeUnit({ teacherIdx: 0 })
     const other = makeUnit({ teacherIdx: 0, attendees: [{ groupIdx: 0, memberMask: [0, 0] }] })
     const state = Solution.forInput(input)
-    state.occupy(other, slot, null, 2)
+    state.occupy(other, slot, null)
     expect(canPlace(input, state, unit, slot, 0)).toBe('teacher_busy')
   })
 
@@ -53,7 +53,7 @@ describe('hard.canPlace — по одному тесту на ограничен
     const unit = makeUnit({ teacherIdx: 0, attendees: [{ groupIdx: 0, memberMask: rangeMask(0, 9) }] })
     const other = makeUnit({ teacherIdx: 0, attendees: [{ groupIdx: 0, memberMask: rangeMask(5, 14) }] })
     const state = Solution.forInput(input)
-    state.occupy(other, slot, null, 2)
+    state.occupy(other, slot, null)
     // разные преподаватели, чтобы не спутать с teacher_busy
     const input2 = baseInput({ teachers: [makeTeacher(0), makeTeacher(1)] })
     const unit2 = { ...unit, teacherIdx: 1 }
@@ -65,7 +65,7 @@ describe('hard.canPlace — по одному тесту на ограничен
     const slot = slotIndex(1, 1)
     const state = Solution.forInput(input)
     const other = makeUnit({ teacherIdx: 0, attendees: [{ groupIdx: 0, memberMask: [0, 0] }] })
-    state.occupy(other, slot, 0, 2)
+    state.occupy(other, slot, 0)
     const unit = makeUnit({ teacherIdx: 1, attendees: [{ groupIdx: 0, memberMask: [0, 0] }] })
     expect(canPlace(input, state, unit, slot, 0)).toBe('room_busy')
   })
@@ -95,7 +95,7 @@ describe('hard.canPlace — по одному тесту на ограничен
     const input = baseInput({ groups: [makeGroup(0, { maxPairsPerDay: 1 })] })
     const unit1 = makeUnit({ teacherIdx: 0 })
     const state = Solution.forInput(input)
-    state.occupy(unit1, slotIndex(1, 1), null, 2)
+    state.occupy(unit1, slotIndex(1, 1), null)
     const unit2 = makeUnit({ teacherIdx: 0 })
     expect(canPlace(input, state, unit2, slotIndex(1, 2), 0)).toBe('group_day_limit')
   })
@@ -104,7 +104,7 @@ describe('hard.canPlace — по одному тесту на ограничен
     const input = baseInput({ teachers: [makeTeacher(0, { maxPairsPerDay: 1 })] })
     const unit1 = makeUnit({ teacherIdx: 0, attendees: [{ groupIdx: 0, memberMask: [0, 0] }] })
     const state = Solution.forInput(input)
-    state.occupy(unit1, slotIndex(1, 1), null, 2)
+    state.occupy(unit1, slotIndex(1, 1), null)
     const unit2 = makeUnit({ teacherIdx: 0, attendees: [{ groupIdx: 0, memberMask: [0, 0] }] })
     expect(canPlace(input, state, unit2, slotIndex(1, 2), 0)).toBe('teacher_day_limit')
   })
@@ -113,7 +113,7 @@ describe('hard.canPlace — по одному тесту на ограничен
     const input = baseInput({ groups: [makeGroup(0, { maxHoursPerWeek: 2 })] })
     const unit1 = makeUnit({ teacherIdx: 0 })
     const state = Solution.forInput(input)
-    state.occupy(unit1, slotIndex(1, 1), null, 2)
+    state.occupy(unit1, slotIndex(1, 1), null)
     const unit2 = makeUnit({ teacherIdx: 0 })
     expect(canPlace(input, state, unit2, slotIndex(1, 2), 0)).toBe('group_week_hours')
   })
@@ -125,7 +125,7 @@ describe('hard.canPlace — по одному тесту на ограничен
     })
     const clinicalUnit = makeUnit({ teacherIdx: 0, clinicalMode: 'full_day', buildingIdxRequired: 1 })
     const state = Solution.forInput(input)
-    state.occupy(clinicalUnit, slotIndex(1, 1), 0, 2)
+    state.occupy(clinicalUnit, slotIndex(1, 1), 0)
 
     const collegeUnit = makeUnit({ teacherIdx: 0 })
     expect(canPlace(input, state, collegeUnit, slotIndex(1, 2), 1)).toBe('clinical_conflict')
@@ -142,7 +142,7 @@ describe('hard.canPlace — по одному тесту на ограничен
     })
     const state = Solution.forInput(input)
     // сначала обычное занятие в корпусе колледжа
-    state.occupy(makeUnit({ teacherIdx: 0 }), slotIndex(1, 1), 1, 2)
+    state.occupy(makeUnit({ teacherIdx: 0 }), slotIndex(1, 1), 1)
 
     const clinicalUnit = makeUnit({ teacherIdx: 0, clinicalMode: 'full_day', buildingIdxRequired: 1 })
     expect(canPlace(input, state, clinicalUnit, slotIndex(1, 2), 0)).toBe('clinical_conflict')
@@ -157,7 +157,7 @@ describe('hard.canPlace — по одному тесту на ограничен
       teachers: [makeTeacher(0), makeTeacher(1)],
     })
     const state = Solution.forInput(input)
-    state.occupy(makeUnit({ teacherIdx: 0, clinicalMode: 'full_day', buildingIdxRequired: 1 }), slotIndex(1, 1), 0, 2)
+    state.occupy(makeUnit({ teacherIdx: 0, clinicalMode: 'full_day', buildingIdxRequired: 1 }), slotIndex(1, 1), 0)
 
     const anyUnit = makeUnit({ teacherIdx: 1 })
     expect(canPlace(input, state, anyUnit, slotIndex(1, 2), 1)).toBeNull()

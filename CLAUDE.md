@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 | Документ | Когда открывать |
 |---|---|
-| [docs/decisions.md](./docs/decisions.md) | **источник истины по предметной области**: 47 принятых решений и непроверенные допущения |
+| [docs/decisions.md](./docs/decisions.md) | **источник истины по предметной области**: 48 принятых решений и непроверенные допущения |
 | [docs/dev-workflow.md](./docs/dev-workflow.md) | команды, окружение, ABI-грабли, CI, устройство тестов |
 | [docs/architecture.md](./docs/architecture.md) | карта репозитория, границы слоёв, обработка ошибок, жизненный цикл генерации |
 | [docs/data-layer.md](./docs/data-layer.md) | запись в БД, аудит, операции и откат, историчность, миграции, бэкапы, 36 таблиц |

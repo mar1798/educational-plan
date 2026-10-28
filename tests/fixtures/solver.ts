@@ -58,6 +58,7 @@ export function makeUnit(opts: Partial<Unit> & Pick<Unit, 'teacherIdx'>): Unit {
     lessonKind: 'practice',
     parity: 'all',
     pairedUnitId: null,
+    span: 1,
     attendees: [{ groupIdx: 0, memberMask: [0xffffffff, 0xffffffff] }],
     ...opts,
   }

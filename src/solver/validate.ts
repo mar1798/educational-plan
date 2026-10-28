@@ -173,7 +173,7 @@ export function validateSolution(input: SolverInput, output: SolverOutput): Solv
   // Занять ресурсы под уже стоящие (is_locked) записи — они не проверяются (не юниты
   // солвера), но занимают место, с которым должны считаться назначения ниже.
   for (const f of input.fixed) {
-    applyOccupation(f, f.slot, f.roomIdx)
+    for (let k = 0; k < f.span; k++) applyOccupation(f, f.slot + k, f.roomIdx)
   }
 
   for (const a of output.assignments) {
@@ -187,33 +187,21 @@ export function validateSolution(input: SolverInput, output: SolverOutput): Solv
     }
     seen.add(unit.id)
 
-    const s = input.slots[a.slot]
-    if (!s || !s.enabled) {
+    const first = input.slots[a.slot]
+    if (!first || !first.enabled) {
       violations.push({ unitId: unit.id, reason: 'slot_disabled', detail: `слот ${a.slot} выключен или не существует` })
+      continue
+    }
+    // Длинное занятие (п. 48) — пары подряд в одном дне. Своё правило, а не `fitsInDay` из
+    // модели: валидатор не опирается на код, который проверяет.
+    if (first.pair + unit.span - 1 > 6) {
+      violations.push({ unitId: unit.id, reason: 'slot_disabled', detail: `занятие из ${unit.span} пар с ${first.pair}-й пары не помещается в день` })
       continue
     }
 
     const teacher = input.teachers[unit.teacherIdx]
-    if (teacher && bitAt(teacher.unavailable, a.slot)) {
-      violations.push({ unitId: unit.id, reason: 'teacher_unavailable', detail: 'преподаватель недоступен в этот слот' })
-    }
-    const teacherKey = `${unit.teacherIdx}-${a.slot}`
-    if (teacherSlot.has(teacherKey) && teacherSlot.get(teacherKey) !== unit.id) {
-      violations.push({ unitId: unit.id, reason: 'teacher_busy', detail: `преподаватель уже занят юнитом #${teacherSlot.get(teacherKey)}` })
-    }
-
-    for (const att of unit.attendees) {
-      const occupied = studentSlot.get(`${att.groupIdx}-${a.slot}`)
-      if (occupied && overlaps(occupied, att.memberMask)) {
-        violations.push({ unitId: unit.id, reason: 'student_busy', detail: `студенты группы #${att.groupIdx} уже заняты в этот слот` })
-      }
-    }
 
     if (a.roomIdx != null) {
-      const roomKey = `${a.roomIdx}-${a.slot}`
-      if (roomSlot.has(roomKey) && roomSlot.get(roomKey) !== unit.id) {
-        violations.push({ unitId: unit.id, reason: 'room_busy', detail: `кабинет уже занят юнитом #${roomSlot.get(roomKey)}` })
-      }
       const room = input.rooms[a.roomIdx]
       if (room) {
         if (room.capacity != null && room.capacity < unit.students) {
@@ -233,43 +221,74 @@ export function validateSolution(input: SolverInput, output: SolverOutput): Solv
       violations.push({ unitId: unit.id, reason: 'no_room_candidate', detail: 'кабинет обязателен, но не назначен' })
     }
 
-    const day = s.day
-    const building = buildingOf(unit, a.roomIdx)
-    for (const att of unit.attendees) {
-      const group: GroupInfo | undefined = input.groups[att.groupIdx]
-      if (group) {
-        const addsPair = !occupiedSlotsG.has(`${att.groupIdx}-${a.slot}`)
-        const gDay = (pairsPerDayG.get(`${att.groupIdx}-${day}`) ?? 0) + (addsPair ? 1 : 0)
-        if (gDay > group.maxPairsPerDay) {
-          violations.push({ unitId: unit.id, reason: 'group_day_limit', detail: `группа #${att.groupIdx}: пар в день больше лимита ${group.maxPairsPerDay}` })
-        }
-        const hours = maxHoursIn(att.groupIdx, att.memberMask) + s.academicHours
-        if (hours > group.maxHoursPerWeek) {
-          violations.push({ unitId: unit.id, reason: 'group_week_hours', detail: `группа #${att.groupIdx}: часов в неделю больше лимита ${group.maxHoursPerWeek}` })
-        }
+    for (let k = 0; k < unit.span; k++) {
+      const slot = a.slot + k
+      const s = input.slots[slot]
+      if (!s || !s.enabled || s.day !== first.day) {
+        violations.push({ unitId: unit.id, reason: 'slot_disabled', detail: `слот ${slot} выключен или не существует` })
+        continue
       }
-      const dKey = `${att.groupIdx}-${day}`
-      const claimedBy = clinicalDay.get(dKey)
-      if (claimedBy != null) {
-        if (building !== claimedBy) {
-          violations.push({ unitId: unit.id, reason: 'clinical_conflict', detail: `день у группы #${att.groupIdx} уже занят другим зданием` })
-        }
-      } else if (unit.clinicalMode === 'full_day' && building != null) {
-        const used = [...(dayBuildings.get(dKey)?.entries() ?? [])].filter(([, n]) => n > 0).map(([b]) => b)
-        if (used.some((b) => b !== building)) {
-          violations.push({ unitId: unit.id, reason: 'clinical_conflict', detail: `день у группы #${att.groupIdx} уже занят занятиями вне базы` })
-        }
-      }
-    }
 
-    if (teacher?.maxPairsPerDay != null) {
-      const tDay = (pairsPerDayT.get(`${unit.teacherIdx}-${day}`) ?? 0) + 1
-      if (tDay > teacher.maxPairsPerDay) {
-        violations.push({ unitId: unit.id, reason: 'teacher_day_limit', detail: `преподаватель: пар в день больше лимита ${teacher.maxPairsPerDay}` })
+      if (teacher && bitAt(teacher.unavailable, slot)) {
+        violations.push({ unitId: unit.id, reason: 'teacher_unavailable', detail: 'преподаватель недоступен в этот слот' })
       }
-    }
+      const teacherKey = `${unit.teacherIdx}-${slot}`
+      if (teacherSlot.has(teacherKey) && teacherSlot.get(teacherKey) !== unit.id) {
+        violations.push({ unitId: unit.id, reason: 'teacher_busy', detail: `преподаватель уже занят юнитом #${teacherSlot.get(teacherKey)}` })
+      }
 
-    applyOccupation(unit, a.slot, a.roomIdx)
+      for (const att of unit.attendees) {
+        const occupied = studentSlot.get(`${att.groupIdx}-${slot}`)
+        if (occupied && overlaps(occupied, att.memberMask)) {
+          violations.push({ unitId: unit.id, reason: 'student_busy', detail: `студенты группы #${att.groupIdx} уже заняты в этот слот` })
+        }
+      }
+
+      if (a.roomIdx != null) {
+        const roomKey = `${a.roomIdx}-${slot}`
+        if (roomSlot.has(roomKey) && roomSlot.get(roomKey) !== unit.id) {
+          violations.push({ unitId: unit.id, reason: 'room_busy', detail: `кабинет уже занят юнитом #${roomSlot.get(roomKey)}` })
+        }
+      }
+
+      const day = s.day
+      const building = buildingOf(unit, a.roomIdx)
+      for (const att of unit.attendees) {
+        const group: GroupInfo | undefined = input.groups[att.groupIdx]
+        if (group) {
+          const addsPair = !occupiedSlotsG.has(`${att.groupIdx}-${slot}`)
+          const gDay = (pairsPerDayG.get(`${att.groupIdx}-${day}`) ?? 0) + (addsPair ? 1 : 0)
+          if (gDay > group.maxPairsPerDay) {
+            violations.push({ unitId: unit.id, reason: 'group_day_limit', detail: `группа #${att.groupIdx}: пар в день больше лимита ${group.maxPairsPerDay}` })
+          }
+          const hours = maxHoursIn(att.groupIdx, att.memberMask) + s.academicHours
+          if (hours > group.maxHoursPerWeek) {
+            violations.push({ unitId: unit.id, reason: 'group_week_hours', detail: `группа #${att.groupIdx}: часов в неделю больше лимита ${group.maxHoursPerWeek}` })
+          }
+        }
+        const dKey = `${att.groupIdx}-${day}`
+        const claimedBy = clinicalDay.get(dKey)
+        if (claimedBy != null) {
+          if (building !== claimedBy) {
+            violations.push({ unitId: unit.id, reason: 'clinical_conflict', detail: `день у группы #${att.groupIdx} уже занят другим зданием` })
+          }
+        } else if (unit.clinicalMode === 'full_day' && building != null) {
+          const used = [...(dayBuildings.get(dKey)?.entries() ?? [])].filter(([, n]) => n > 0).map(([b]) => b)
+          if (used.some((b) => b !== building)) {
+            violations.push({ unitId: unit.id, reason: 'clinical_conflict', detail: `день у группы #${att.groupIdx} уже занят занятиями вне базы` })
+          }
+        }
+      }
+
+      if (teacher?.maxPairsPerDay != null) {
+        const tDay = (pairsPerDayT.get(`${unit.teacherIdx}-${day}`) ?? 0) + 1
+        if (tDay > teacher.maxPairsPerDay) {
+          violations.push({ unitId: unit.id, reason: 'teacher_day_limit', detail: `преподаватель: пар в день больше лимита ${teacher.maxPairsPerDay}` })
+        }
+      }
+
+      applyOccupation(unit, slot, a.roomIdx)
+    }
   }
 
   for (const u of output.unplaced) seen.add(u.unitId)

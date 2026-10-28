@@ -100,6 +100,7 @@ export const FIELD_LABEL: Record<string, string> = {
   semesterId: 'Семестр',
   semesterNo: 'Семестр',
   semestersTotal: 'Всего семестров',
+  sessionHours: 'Длительность занятия',
   sourceGroupId: 'Исходная группа',
   specialityId: 'Специальность',
   startsAt: 'Начало',

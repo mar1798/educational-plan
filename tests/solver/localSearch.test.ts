@@ -106,7 +106,7 @@ describe('localSearch (solve = жадная фаза + локальный пои
     expect(validateSolution(input, output)).toEqual([])
   })
 
-  it('breakdown содержит все десять кодов мягких критериев плюс unplaced', async () => {
+  it('breakdown содержит все одиннадцать кодов мягких критериев плюс unplaced', async () => {
     const input = withFastBudget(tightInput())
     const output = await solve(input)
     const codes = [
@@ -120,6 +120,7 @@ describe('localSearch (solve = жадная фаза + локальный пои
       'clinical_block_start',
       'room_missing',
       'teacher_days',
+      'session_start',
       'unplaced',
     ]
     for (const code of codes) expect(output.breakdown).toHaveProperty(code)

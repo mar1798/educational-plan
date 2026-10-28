@@ -26,6 +26,7 @@ function baseInput(overrides: Partial<SolverInput> = {}): SolverInput {
       clinicalBlockStart: 1,
       roomMissing: 1,
       teacherDays: 1,
+      sessionStart: 1,
     },
     limits: { timeBudgetMs: 1000, maxIterations: 1000, seed: 1 },
     ...overrides,
@@ -33,7 +34,7 @@ function baseInput(overrides: Partial<SolverInput> = {}): SolverInput {
 }
 
 function place(input: SolverInput, state: Solution, unit: Unit, slot: number, roomIdx: number | null): PlacedUnit {
-  state.occupy(unit, slot, roomIdx, input.slots[slot]!.academicHours)
+  state.occupy(unit, slot, roomIdx)
   return { unit, slot, roomIdx }
 }
 

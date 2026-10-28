@@ -378,6 +378,8 @@ export function applyTeachingLoadRows(
           subgroupId: null,
           lessonKind,
           hoursPlanned,
+          // В файлах колледжа длительность нигде не указана (п. 48) — завуч правит после импорта.
+          sessionHours: 2,
           requiresParallel: false,
           roomTypeRequired: null,
           clinicalModeOverride: null,

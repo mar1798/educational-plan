@@ -571,6 +571,7 @@ function seedDemo(db: Db): { counters: Counters; templateId: number; semesterId:
             subgroupId: null,
             lessonKind: 'theory',
             hoursPlanned: row.id === streamLectureRowId ? 72 - STREAM_LECTURE_HOURS : 72,
+            sessionHours: 2,
             requiresParallel: false,
             roomTypeRequired: spec.roomType,
             clinicalModeOverride: null,
@@ -603,6 +604,7 @@ function seedDemo(db: Db): { counters: Counters; templateId: number; semesterId:
             // строки всех подгрупп, и фиксированные 36 ч давали при делении на три 108 ч —
             // группа выглядела перегруженной относительно собственного учебного плана.
             hoursPlanned: 72 / scheme.subgroupIds.length,
+            sessionHours: 2,
             requiresParallel: true,
             roomTypeRequired: spec.roomType,
             clinicalModeOverride: clinical?.mode ?? null,
@@ -643,6 +645,7 @@ function seedDemo(db: Db): { counters: Counters; templateId: number; semesterId:
         subgroupId: null,
         lessonKind: 'theory',
         hoursPlanned: STREAM_LECTURE_HOURS,
+        sessionHours: 2,
         requiresParallel: false,
         roomTypeRequired: 'lecture',
         clinicalModeOverride: null,

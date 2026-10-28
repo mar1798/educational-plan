@@ -18,6 +18,7 @@ export const constraintWeight = sqliteTable('constraint_weight', {
       | 'late_pair'
       | 'room_missing'
       | 'clinical_block_start'
+      | 'session_start'
     >(),
   weight: integer('weight').notNull(),
   enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),

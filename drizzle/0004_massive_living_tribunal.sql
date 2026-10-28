@@ -1,0 +1,1 @@
+ALTER TABLE `teaching_load` ADD `session_hours` integer DEFAULT 2 NOT NULL;

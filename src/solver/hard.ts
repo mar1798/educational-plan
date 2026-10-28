@@ -1,11 +1,11 @@
 /**
  * Жёсткие ограничения солвера (§5.4 PLAN.md). `canPlace` — короткозамкнутая проверка одной
  * попытки «поставить unit в (slot, roomIdx)»: возвращает первую нарушенную причину или
- * `null`, если размещение допустимо. Не мутирует состояние — вызывающая сторона (`greedy.ts`)
- * решает, коммитить ли через `Solution.occupy`.
+ * `null`, если размещение допустимо. Состояние после вызова то же, что до, — вызывающая
+ * сторона (`greedy.ts`) решает, коммитить ли через `Solution.occupy`.
  */
 import type { BlockReason, SlotInfo, SolverInput, Unit } from './model'
-import { DAYS } from './model'
+import { DAYS, fitsInDay } from './model'
 import type { Solution } from './occupancy'
 import { intersects, isEmpty, testBit, withBit } from './occupancy'
 
@@ -31,7 +31,28 @@ function slotOf(slots: readonly SlotInfo[], slot: number): SlotInfo {
   return slots[slot]!
 }
 
+/**
+ * Длинное занятие (п. 48) проверяется попарно: каждая следующая пара — по состоянию, где
+ * предыдущие уже временно заняты. Иначе лимиты дня и недели видели бы только одну пару из
+ * трёх, а проверка шла бы отдельным, легко расходящимся с `occupy` кодом. Временные пары
+ * снимаются до возврата.
+ */
 export function canPlace(input: SolverInput, state: Solution, unit: Unit, slot: number, roomIdx: number | null): BlockReason | null {
+  if (unit.span <= 1) return canPlaceOne(input, state, unit, slot, roomIdx)
+  // Хвост занятия, вылезающий за последнюю пару, приходится на слоты, которых нет.
+  if (!fitsInDay(slotOf(input.slots, slot).pair, unit.span)) return 'slot_disabled'
+  let reason: BlockReason | null = null
+  let taken = 0
+  for (; taken < unit.span; taken++) {
+    reason = canPlaceOne(input, state, unit, slot + taken, roomIdx)
+    if (reason !== null) break
+    state.occupySlot(unit, slot + taken, roomIdx)
+  }
+  for (let k = taken - 1; k >= 0; k--) state.vacateSlot(unit, slot + k, roomIdx)
+  return reason
+}
+
+function canPlaceOne(input: SolverInput, state: Solution, unit: Unit, slot: number, roomIdx: number | null): BlockReason | null {
   const s = slotOf(input.slots, slot)
   if (!s.enabled) return 'slot_disabled'
 

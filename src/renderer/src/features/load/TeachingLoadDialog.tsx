@@ -61,6 +61,7 @@ export function TeachingLoadDialog({
   const [teacherId, setTeacherId] = useState<number | ''>(row?.teacherId ?? '')
   const [lessonKind, setLessonKind] = useState<TeachingLoad['lessonKind']>(row?.lessonKind ?? 'theory')
   const [hoursPlanned, setHoursPlanned] = useState(row?.hoursPlanned ?? 0)
+  const [sessionHours, setSessionHours] = useState<TeachingLoad['sessionHours']>(row?.sessionHours ?? 2)
   const [requiresParallel, setRequiresParallel] = useState(row?.requiresParallel ?? false)
   const [clinicalModeOverride, setClinicalModeOverride] = useState<TeachingLoad['clinicalModeOverride']>(row?.clinicalModeOverride ?? null)
   const [roomTypeRequired, setRoomTypeRequired] = useState<TeachingLoad['roomTypeRequired']>(row?.roomTypeRequired ?? null)
@@ -149,6 +150,8 @@ export function TeachingLoadDialog({
       subgroupId: subgroupId ?? null,
       lessonKind,
       hoursPlanned,
+      // Выбор длительности виден только у практики; если вид сменили, прежний выбор не отправляем.
+      sessionHours: lessonKind === 'practice' ? sessionHours : 2,
       requiresParallel,
       roomTypeRequired,
       clinicalModeOverride,
@@ -280,6 +283,21 @@ export function TeachingLoadDialog({
         <label htmlFor="load-hours">Часы</label>
         <input id="load-hours" type="number" min={1} value={hoursPlanned} onChange={(e) => setHoursPlanned(Number(e.target.value))} />
       </div>
+
+      {lessonKind === 'practice' && (
+        <div className="form-field">
+          <label htmlFor="load-session-hours">Длительность занятия</label>
+          <Select
+            id="load-session-hours"
+            value={sessionHours}
+            onChange={(v) => setSessionHours(Number(v) as TeachingLoad['sessionHours'])}
+          >
+            <option value={2}>2 ч (одна пара)</option>
+            <option value={4}>4 ч (две пары подряд)</option>
+            <option value={6}>6 ч (три пары подряд)</option>
+          </Select>
+        </div>
+      )}
 
       <div className="form-field form-field-checkbox">
         <input id="load-parallel" type="checkbox" checked={requiresParallel} onChange={(e) => setRequiresParallel(e.target.checked)} />

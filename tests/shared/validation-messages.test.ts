@@ -44,6 +44,7 @@ describe('русские сообщения проверки ввода', () => 
       subgroupId: null,
       lessonKind: 'theory',
       hoursPlanned: 1.5,
+      sessionHours: 2,
       requiresParallel: false,
       roomTypeRequired: null,
       clinicalModeOverride: null,

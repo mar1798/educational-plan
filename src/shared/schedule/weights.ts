@@ -21,6 +21,7 @@ export const WEIGHT_BREAKDOWN_LABEL: Record<WeightKey, string> = {
   clinicalBlockStart: 'поздний старт блока на базе',
   roomMissing: 'занятия без кабинета',
   teacherDays: 'лишние рабочие дни преподавателей',
+  sessionStart: 'длинная практика не с начала полудня',
 }
 
 export interface WeightProfile {
