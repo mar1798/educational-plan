@@ -276,26 +276,30 @@ export async function runLocalSearch(input: SolverInput, greedy: SolverOutput, h
     return min === -1 ? null : { min, max }
   }
 
-  function gapProxy(range: { min: number; max: number } | null, pair: number): number {
+  /** Окно между уже занятыми парами дня и занятием на парах `from..to` — как `gapContribution` в `greedy.ts`. */
+  function gapProxy(range: { min: number; max: number } | null, from: number, to: number): number {
     if (range === null) return 0
-    if (pair >= range.min - 1 && pair <= range.max + 1) return 0
-    return Math.min(Math.abs(pair - range.min), Math.abs(pair - range.max))
+    if (to >= range.min - 1 && from <= range.max + 1) return 0
+    return to < range.min ? range.min - to : from - range.max
   }
 
   /** Дешёвая оценка кандидата на слот для `move`/`insert` — направляет случайный перебор
-   * в сторону слотов без окон, вместо чисто слепого блуждания (см. шапку файла). */
+   * в сторону слотов без окон, вместо чисто слепого блуждания (см. шапку файла). Длинное
+   * занятие (п. 48) оценивается по всем своим парам и по началу «по сетке», как в жадной фазе. */
   function heuristicSlotScore(unit: Unit, slot: number): number {
     const s = input.slots[slot]!
-    let score = s.pair - 1
+    const last = s.pair + unit.span - 1
+    let score = last - 1
     const teacherRange = occupiedRange((p) => testBit(state.teacherMask(unit.teacherIdx), slotIndex(s.day, p)))
-    score += gapProxy(teacherRange, s.pair)
+    score += gapProxy(teacherRange, s.pair, last)
     for (const a of unit.attendees) {
       const groupRange = occupiedRange((p) => {
         const m = state.studentMask(a.groupIdx, slotIndex(s.day, p))
         return m[0] !== 0 || m[1] !== 0
       })
-      score += gapProxy(groupRange, s.pair)
+      score += gapProxy(groupRange, s.pair, last)
     }
+    if (!isAlignedStart(s.pair, unit.span)) score += 3
     return score
   }
 
@@ -406,16 +410,19 @@ export async function runLocalSearch(input: SolverInput, greedy: SolverOutput, h
     for (const m of moves) if (m.from) occupyAndSpread(m.unit, m.from)
   }
 
-  function findBlocker(unit: Unit, slot: number): Unit | null {
-    const occupants = slotOccupants.get(slot)
-    if (!occupants) return null
-    for (const otherId of occupants) {
-      const other = unitsById.get(otherId)
-      if (!other || other.id === unit.id) continue
-      if (other.teacherIdx === unit.teacherIdx) return other
-      for (const a of unit.attendees) {
-        for (const b of other.attendees) {
-          if (a.groupIdx === b.groupIdx && intersects(a.memberMask, b.memberMask)) return other
+  /** Первый мешающий юнит на любой из пар, которые займёт `unit` (у длинного занятия их 2–3). */
+  function findBlocker(unit: Unit, start: number): Unit | null {
+    for (let slot = start; slot < start + unit.span; slot++) {
+      const occupants = slotOccupants.get(slot)
+      if (!occupants) continue
+      for (const otherId of occupants) {
+        const other = unitsById.get(otherId)
+        if (!other || other.id === unit.id) continue
+        if (other.teacherIdx === unit.teacherIdx) return other
+        for (const a of unit.attendees) {
+          for (const b of other.attendees) {
+            if (a.groupIdx === b.groupIdx && intersects(a.memberMask, b.memberMask)) return other
+          }
         }
       }
     }
@@ -482,6 +489,9 @@ export async function runLocalSearch(input: SolverInput, greedy: SolverOutput, h
     const posA = assignments.get(idA)!
     const posB = assignments.get(idB)!
     if (posA.slot === posB.slot) return null
+    // Юниты разной длины (п. 48): обмен, после которого занятие вылезает за 6-ю пару, `tryApply`
+    // всё равно отвергнет — отсекаем его до дорогой проверки.
+    if (!fitsInDay(input.slots[posB.slot]!.pair, unitA.span) || !fitsInDay(input.slots[posA.slot]!.pair, unitB.span)) return null
     return [
       { unit: unitA, from: posA, to: { slot: posB.slot, roomIdx: posB.roomIdx } },
       { unit: unitB, from: posB, to: { slot: posA.slot, roomIdx: posA.roomIdx } },
