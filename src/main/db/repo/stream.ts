@@ -1,4 +1,5 @@
 import { and, eq, isNull } from 'drizzle-orm'
+import { semester } from '../schema/calendar'
 import { stream, streamMember, teachingLoad } from '../schema/load'
 import { studyGroup } from '../schema/people'
 import { lesson } from '../schema/schedule'
@@ -48,6 +49,15 @@ export function createStream(
 ): StreamRow & { members: StreamMemberRow[] } {
   if (params.groupIds.length < 2) {
     throw new StreamValidationError('В поток нужно выбрать минимум 2 группы')
+  }
+  // Повтор id прошёл бы проверку «минимум две» и дал поток из одной группы.
+  if (new Set(params.groupIds).size !== params.groupIds.length) {
+    throw new StreamValidationError('Группа выбрана в поток дважды')
+  }
+  // Без этой проверки несуществующее полугодие доходило до завуча как нарушение внешнего
+  // ключа — «запись используется в других разделах», что про создание неправда.
+  if (!tx.select({ id: semester.id }).from(semester).where(eq(semester.id, params.semesterId)).get()) {
+    throw new NotFoundError('semester', params.semesterId)
   }
 
   const groups = params.groupIds.map((id) => {

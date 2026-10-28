@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { curriculum, curriculumRow } from '../schema/curriculum'
-import { streamMember, teachingLoad } from '../schema/load'
-import { studyGroup, teacher, teacherQualification } from '../schema/people'
+import { stream, streamMember, teachingLoad } from '../schema/load'
+import { divisionScheme, studyGroup, subgroup, teacher, teacherQualification } from '../schema/people'
 import { semester } from '../schema/calendar'
 import { otherLoad } from '../schema/system'
 import type { AuditContext } from './audit'
@@ -110,6 +110,12 @@ export function saveTeachingLoad(
   const row = tx.select().from(curriculumRow).where(eq(curriculumRow.id, input.curriculumRowId)).get()
   if (!row) throw new NotFoundError('curriculum_row', input.curriculumRowId)
 
+  const sem = tx.select().from(semester).where(eq(semester.id, input.semesterId)).get()
+  if (!sem) throw new NotFoundError('semester', input.semesterId)
+
+  const targetGroups = loadTargetGroups(tx, input)
+  assertPlanRowFits(tx, row, targetGroups, sem.no)
+
   if (!isTeacherQualified(tx, input.teacherId, row.disciplineId, validFrom)) {
     throw new LoadValidationError(
       `Преподаватель ${t.lastName} ${t.firstName} не имеет действующей квалификации по этой дисциплине на ${validFrom}`,
@@ -117,11 +123,7 @@ export function saveTeachingLoad(
   }
 
   if (input.groupId != null) {
-    const group = tx.select().from(studyGroup).where(eq(studyGroup.id, input.groupId)).get()
-    if (!group) throw new NotFoundError('study_group', input.groupId)
-    const sem = tx.select().from(semester).where(eq(semester.id, input.semesterId)).get()
-    if (!sem) throw new NotFoundError('semester', input.semesterId)
-
+    const group = targetGroups[0]!
     const already = activeGroupTeachingHours(tx, input.groupId, input.semesterId, existing?.id)
     const total = already + input.hoursPlanned
     const limit = group.maxHoursPerWeek * sem.weeksCount
@@ -144,6 +146,74 @@ export function saveTeachingLoad(
   }
 
   return { row: saved, teacherHoursOverYear }
+}
+
+type StudyGroupRow = typeof studyGroup.$inferSelect
+
+/**
+ * Группы, на которые ложится нагрузка: сама группа или действующие участники потока.
+ * Попутно проверяется, что поток из того же полугодия, а подгруппа — из схемы деления
+ * этой группы: иначе при расформировании потока (§3.5a) чужая подгруппа расползалась
+ * по группам-участницам.
+ */
+function loadTargetGroups(tx: DbLike, input: TeachingLoadInput): StudyGroupRow[] {
+  if (input.streamId != null) {
+    const s = tx.select().from(stream).where(eq(stream.id, input.streamId)).get()
+    if (!s) throw new NotFoundError('stream', input.streamId)
+    if (s.semesterId !== input.semesterId) {
+      throw new LoadValidationError(`Поток «${s.name}» создан в другом полугодии — выберите поток этого полугодия`)
+    }
+    if (input.divisionSchemeId != null || input.subgroupId != null) {
+      throw new LoadValidationError('Подгруппу можно указать только у нагрузки группы, у потока занимаются все группы целиком')
+    }
+    return tx
+      .select({ g: studyGroup })
+      .from(streamMember)
+      .innerJoin(studyGroup, eq(studyGroup.id, streamMember.groupId))
+      .where(and(eq(streamMember.streamId, s.id), isNull(streamMember.validTo)))
+      .all()
+      .map((r) => r.g)
+  }
+
+  const group = tx.select().from(studyGroup).where(eq(studyGroup.id, input.groupId!)).get()
+  if (!group) throw new NotFoundError('study_group', input.groupId!)
+  if ((input.divisionSchemeId == null) !== (input.subgroupId == null)) {
+    throw new LoadValidationError('Подгруппа указывается вместе со схемой деления')
+  }
+  if (input.subgroupId != null) {
+    const sg = tx.select().from(subgroup).where(eq(subgroup.id, input.subgroupId)).get()
+    if (!sg) throw new NotFoundError('subgroup', input.subgroupId)
+    const scheme = tx.select().from(divisionScheme).where(eq(divisionScheme.id, input.divisionSchemeId!)).get()
+    if (!scheme) throw new NotFoundError('division_scheme', input.divisionSchemeId!)
+    if (scheme.groupId !== group.id || sg.schemeId !== scheme.id) {
+      throw new LoadValidationError(`Подгруппа не из схемы деления группы «${group.name}»`)
+    }
+  }
+  return [group]
+}
+
+/**
+ * Строка плана обязана быть «своей» для каждой группы цели — тот же инвариант, по которому
+ * её подбирает импорт годовой нагрузки: план специальности и года набора группы, её курс
+ * и `plan_semester_no = (курс − 1) × 2 + полугодие` (решение п. 38). У потока он же
+ * держит «одна строка плана на весь поток» (решение п. 27).
+ */
+function assertPlanRowFits(tx: DbLike, row: typeof curriculumRow.$inferSelect, groups: StudyGroupRow[], halfYear: number): void {
+  const plan = tx.select().from(curriculum).where(eq(curriculum.id, row.curriculumId)).get()
+  for (const g of groups) {
+    const planSemesterNo = (g.course - 1) * 2 + halfYear
+    const fits =
+      plan != null &&
+      plan.specialityId === g.specialityId &&
+      plan.admissionYear === g.admissionYear &&
+      row.course === g.course &&
+      row.semesterNo === planSemesterNo
+    if (!fits) {
+      throw new LoadValidationError(
+        `Строка плана не подходит группе «${g.name}»: нужна строка из плана её специальности и года набора ${g.admissionYear}, курс ${g.course}, семестр ${planSemesterNo}`,
+      )
+    }
+  }
 }
 
 /**

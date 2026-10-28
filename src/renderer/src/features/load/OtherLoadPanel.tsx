@@ -51,7 +51,7 @@ export function OtherLoadPanel({ semesterId }: OtherLoadPanelProps) {
     return t ? `${t.lastName} ${t.firstName}` : `#${id}`
   }
 
-  const missing = missingOf(teacherId === '' && 'преподавателя', !(hours > 0) && 'часы (больше нуля)')
+  const missing = missingOf(teacherId === '' && 'преподавателя', !(Number.isInteger(hours) && hours > 0) && 'часы (целое число больше нуля)')
 
   async function add() {
     if (teacherId === '') return

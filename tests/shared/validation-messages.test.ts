@@ -33,4 +33,23 @@ describe('русские сообщения проверки ввода', () => 
     expect(messages.join(' ')).not.toMatch(/number|expected/i)
   })
 
+  it('дробные часы — «нужно целое число», а не «ожидалось int»', () => {
+    const messages = messagesOf({
+      semesterId: 1,
+      curriculumRowId: 1,
+      teacherId: 1,
+      groupId: 1,
+      streamId: null,
+      divisionSchemeId: null,
+      subgroupId: null,
+      lessonKind: 'theory',
+      hoursPlanned: 1.5,
+      requiresParallel: false,
+      roomTypeRequired: null,
+      clinicalModeOverride: null,
+      note: null,
+      validFrom: '2026-09-01',
+    })
+    expect(messages).toEqual(['«Часы» — нужно целое число'])
+  })
 })

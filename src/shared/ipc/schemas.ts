@@ -491,6 +491,14 @@ export const curriculumWeeksSaveInput = z.object({
 // (нужен доступ к БД для содержательного сообщения), здесь — только форма полей.
 export const teachingLoadListInput = z.object({ semesterId: z.number().int().positive() })
 
+// Дата хранится строкой ISO, и сравнения «действует с/по» в SQL идут лексикографически:
+// произвольный текст («вчера») ломал бы их молча.
+const isoDate = (requiredMessage: string) =>
+  z
+    .string()
+    .min(1, requiredMessage)
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Дата в формате ГГГГ-ММ-ДД')
+
 export const teachingLoadSaveInput = withOptimisticId
   .extend({
     semesterId: z.number().int().positive(),
@@ -506,7 +514,7 @@ export const teachingLoadSaveInput = withOptimisticId
     roomTypeRequired: roomType.nullable(),
     clinicalModeOverride: z.enum(['full_day', 'block', 'free']).nullable(),
     note: z.string().nullable(),
-    validFrom: z.string().min(1, 'Укажите дату начала действия'),
+    validFrom: isoDate('Укажите дату начала действия'),
   })
   .superRefine(requireRowVersionOnUpdate)
 
@@ -517,9 +525,9 @@ export const streamsListForSemesterInput = z.object({ semesterId: z.number().int
 
 export const streamCreateInput = z.object({
   semesterId: z.number().int().positive(),
-  name: z.string().min(1, 'Укажите название потока'),
+  name: z.string().trim().min(1, 'Укажите название потока'),
   groupIds: z.array(z.number().int().positive()).min(2, 'Выберите минимум 2 группы'),
-  validFrom: z.string().min(1, 'Укажите дату начала действия'),
+  validFrom: isoDate('Укажите дату начала действия'),
 })
 
 export const streamDisbandInput = z.object({ id: z.number().int().positive() })

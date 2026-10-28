@@ -93,7 +93,7 @@ export function TeachingLoadDialog({
     targetType === 'group' ? groupId === '' && 'группу' : streamId === '' && 'поток',
     curriculumRowId === '' && 'дисциплину',
     teacherId === '' && 'преподавателя',
-    !(hoursPlanned > 0) && 'часы (больше нуля)',
+    !(Number.isInteger(hoursPlanned) && hoursPlanned > 0) && 'часы (целое число больше нуля)',
     validFrom === '' && 'дату «Действует с»',
   )
   const isValid = missing.length === 0

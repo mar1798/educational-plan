@@ -88,4 +88,16 @@ describe('потоки: создание, состав, расформирова
   it('падает NotFoundError при расформировании несуществующего потока', () => {
     expect(() => disbandStream(ctx.db, 999999)).toThrow(NotFoundError)
   })
+
+  it('не даёт собрать «поток» из одной группы, указанной дважды', () => {
+    expect(() =>
+      createStream(ctx.db, { semesterId: world.semesterId, name: 'Дубль', groupIds: [world.groupId, world.groupId], validFrom: '2026-09-01' }),
+    ).toThrow(StreamValidationError)
+  })
+
+  it('несуществующее полугодие — NotFoundError, а не нарушение внешнего ключа', () => {
+    expect(() => createStream(ctx.db, { semesterId: 999999, name: 'Нет', groupIds: [world.groupId, groupId2], validFrom: '2026-09-01' })).toThrow(
+      NotFoundError,
+    )
+  })
 })

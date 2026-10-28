@@ -154,6 +154,9 @@ export function installRuValidationMessages(): void {
         return 'не заполнено'
       }
       if (iss.code === 'invalid_type' && iss.expected === 'number') return 'нужно число'
+      // `.int()` в zod 4 падает как invalid_type с expected 'int' — без этой ветки завуч
+      // видел «ожидалось int, получено число».
+      if (iss.code === 'invalid_type' && iss.expected === 'int') return 'нужно целое число'
       if (iss.code === 'too_small') {
         const min = Number(iss.minimum)
         if (iss.origin === 'string') return min <= 1 ? 'не заполнено' : `не короче ${min} символов`

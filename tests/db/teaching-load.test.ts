@@ -10,6 +10,7 @@ import {
   saveTeachingLoad,
   totalTeacherHours,
 } from '../../src/main/db/repo/teaching-load'
+import { createStream } from '../../src/main/db/repo/stream'
 import * as schema from '../../src/main/db/schema'
 import { createTestDb, seedMinimalWorld, type MinimalWorld } from './helpers'
 
@@ -122,5 +123,52 @@ describe('нагрузка: квалификация, недельный лим�
     expect(row.plannedHours).toBe(80)
     expect(row.assignedHours).toBe(20)
     expect(row.remainingHours).toBe(60)
+  })
+
+  describe('цель нагрузки и строка плана', () => {
+    const qualify = () =>
+      ctx.db.insert(schema.teacherQualification).values({ teacherId: world.teacherId, disciplineId: world.disciplineId, validFrom: '2020-01-01' }).run()
+
+    const addGroup = (name: string, course: number) =>
+      ctx.db
+        .insert(schema.studyGroup)
+        .values({ name, specialityId: world.specialityId, admissionYear: 2026, course, studentsCount: 20, funding: 'budget', validFrom: '2026-01-01' })
+        .returning({ id: schema.studyGroup.id })
+        .get().id
+
+    it('отклоняет строку плана чужого курса', () => {
+      qualify()
+      const course2 = addGroup('21 СД', 2)
+      expect(() => saveTeachingLoad(ctx.db, { ...baseInput(world), groupId: course2 }, '2026-09-01', null)).toThrow(/не подходит группе «21 СД»/)
+    })
+
+    it('принимает нагрузку потоку, если строка плана подходит всем участникам', () => {
+      qualify()
+      const s = createStream(ctx.db, { semesterId: world.semesterId, name: 'Поток', groupIds: [world.groupId, addGroup('12 СД', 1)], validFrom: '2026-09-01' })
+      const { row } = saveTeachingLoad(ctx.db, { ...baseInput(world), groupId: null, streamId: s.id }, '2026-09-01', null)
+      expect(row.streamId).toBe(s.id)
+    })
+
+    it('не ставит подгруппу на поток — при расформировании она расползлась бы по группам', () => {
+      qualify()
+      const s = createStream(ctx.db, { semesterId: world.semesterId, name: 'Поток', groupIds: [world.groupId, addGroup('12 СД', 1)], validFrom: '2026-09-01' })
+      expect(() =>
+        saveTeachingLoad(ctx.db, { ...baseInput(world), groupId: null, streamId: s.id, divisionSchemeId: 1, subgroupId: 1 }, '2026-09-01', null),
+      ).toThrow(LoadValidationError)
+    })
+
+    it('не берёт поток из другого полугодия', () => {
+      qualify()
+      const s = createStream(ctx.db, { semesterId: world.semesterId, name: 'Поток', groupIds: [world.groupId, addGroup('12 СД', 1)], validFrom: '2026-09-01' })
+      const sem = ctx.db.select().from(schema.semester).where(eq(schema.semester.id, world.semesterId)).get()!
+      const other = ctx.db
+        .insert(schema.semester)
+        .values({ academicYearId: sem.academicYearId, no: 2, startsOn: '2027-02-01', endsOn: '2027-06-30' })
+        .returning({ id: schema.semester.id })
+        .get().id
+      expect(() => saveTeachingLoad(ctx.db, { ...baseInput(world), semesterId: other, groupId: null, streamId: s.id }, '2026-09-01', null)).toThrow(
+        /другом полугодии/,
+      )
+    })
   })
 })
