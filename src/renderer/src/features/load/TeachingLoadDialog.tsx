@@ -68,6 +68,8 @@ export function TeachingLoadDialog({
   const [validFrom, setValidFrom] = useState(row?.validFrom ?? todayIso())
   const [loading, setLoading] = useState(false)
   const [creatingStream, setCreatingStream] = useState(false)
+  const [planRows, setPlanRows] = useState<CurriculumRow[]>([])
+  const [planRowsKey, setPlanRowsKey] = useState('')
 
   useEffect(() => {
     void api.invoke('streams:listForSemester', { semesterId }).then((res) => (res.ok ? setStreams(res.value) : notifyError(res.error.message)))
@@ -82,6 +84,40 @@ export function TeachingLoadDialog({
       }
     })
   }, [targetType, groupId])
+
+  // Строки плана подбирает main по тому же правилу, что проверяет при записи (граница 1 в CLAUDE.md:
+  // renderer правило не формулирует). Ключ цели защищает от кадра со строками прошлой цели,
+  // пока идёт запрос за новыми, — как со схемами деления ниже.
+  const targetKey = targetType === 'group' ? (groupId === '' ? '' : `g${groupId}`) : streamId === '' ? '' : `s${streamId}`
+  const isOriginalTarget = row != null && (targetType === 'group' ? row.groupId === groupId : row.streamId === streamId)
+
+  useEffect(() => {
+    if (targetKey === '') return
+    void api
+      .invoke('teachingLoad:planRowOptions', {
+        semesterId,
+        groupId: targetType === 'group' ? (groupId as number) : null,
+        streamId: targetType === 'stream' ? (streamId as number) : null,
+      })
+      .then((res) => {
+        if (!res.ok) return notifyError(res.error.message)
+        setPlanRows(res.value)
+        setPlanRowsKey(targetKey)
+        // Выбранная строка от прошлой цели этой не подходит — сервер её всё равно отклонит.
+        // Строку редактируемой нагрузки на исходной цели не трогаем, даже если план с тех пор
+        // сменил редакцию.
+        setCurriculumRowId((prev) => (prev === '' || isOriginalTarget || res.value.some((r) => r.id === prev) ? prev : ''))
+      })
+  }, [semesterId, targetType, groupId, streamId, targetKey, isOriginalTarget])
+
+  const planRowsLoaded = targetKey !== '' && planRowsKey === targetKey
+  const planRowOptions = (() => {
+    const visible = planRowsLoaded ? [...planRows] : []
+    const current = isOriginalTarget ? curriculumRows.find((r) => r.id === row!.curriculumRowId) : undefined
+    if (current && !visible.some((r) => r.id === current.id)) visible.push(current)
+    const name = (r: CurriculumRow) => disciplines.get(r.disciplineId)?.name ?? `#${r.disciplineId}`
+    return visible.sort((a, b) => name(a).localeCompare(name(b), 'ru')).map((r) => ({ id: r.id, label: `${name(r)} — ${r.hoursClassroom} ауд. ч` }))
+  })()
 
   // Схемы фильтруются по groupId, под который они реально загружены — иначе при смене
   // группы виден кадр со схемами прошлой, пока идёт запрос за новыми.
@@ -205,13 +241,16 @@ export function TeachingLoadDialog({
       <div className="form-field">
         <label htmlFor="load-row">Дисциплина (строка плана)</label>
         <Select id="load-row" value={curriculumRowId} onChange={(v) => setCurriculumRowId(v === '' ? '' : Number(v))}>
-          <option value="">—</option>
-          {curriculumRows.map((r) => (
-            <option key={r.id} value={r.id}>
-              {disciplines.get(r.disciplineId)?.name ?? `#${r.disciplineId}`} — курс {r.course}, сем. {r.semesterNo}
+          <option value="">{targetKey === '' ? `Сначала выберите ${targetType === 'group' ? 'группу' : 'поток'}` : '—'}</option>
+          {planRowOptions.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}
             </option>
           ))}
         </Select>
+        {planRowsLoaded && planRowOptions.length === 0 && (
+          <p className="form-hint">В учебном плане нет строк на это полугодие для выбранной цели — проверьте план специальности и год набора.</p>
+        )}
       </div>
 
       <div className="form-field">

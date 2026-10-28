@@ -793,6 +793,7 @@ export interface IpcContract {
   'teachingLoad:list': { in: { semesterId: number }; out: TeachingLoad[] }
   'teachingLoad:save': { in: TeachingLoadSaveInput; out: TeachingLoadSaveResult }
   'teachingLoad:delete': { in: { id: number }; out: { ok: true } }
+  'teachingLoad:planRowOptions': { in: { semesterId: number; groupId: number | null; streamId: number | null }; out: CurriculumRow[] }
 
   // Потоки (§3.5a): лекция на несколько групп одной специальности и курса одной строкой.
   'streams:listForSemester': { in: { semesterId: number }; out: StreamWithMembers[] }

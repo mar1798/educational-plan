@@ -520,6 +520,12 @@ export const teachingLoadSaveInput = withOptimisticId
 
 export const teachingLoadDeleteInput = z.object({ id: z.number().int().positive() })
 
+export const teachingLoadPlanRowOptionsInput = z.object({
+  semesterId: z.number().int().positive(),
+  groupId: z.number().int().positive().nullable(),
+  streamId: z.number().int().positive().nullable(),
+})
+
 // Потоки (§3.5a).
 export const streamsListForSemesterInput = z.object({ semesterId: z.number().int().positive() })
 

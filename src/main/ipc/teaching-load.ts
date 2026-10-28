@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm'
 import type {
+  CurriculumRow,
   GroupBalanceRow,
   OtherLoad,
   StreamWithMembers,
@@ -18,6 +19,7 @@ import {
   streamsListForSemesterInput,
   teachingLoadDeleteInput,
   teachingLoadListInput,
+  teachingLoadPlanRowOptionsInput,
   teachingLoadSaveInput,
 } from '../../shared/ipc/schemas'
 import type { Db } from '../db/client'
@@ -25,7 +27,7 @@ import { createRow, deleteRow, updateRow } from '../db/repo/base-repo'
 import { ensureDeletable } from '../db/repo/reference-guard'
 import { runOperation } from '../db/repo/operations'
 import { createStream, disbandStream, listStreamsWithMembers } from '../db/repo/stream'
-import { loadBalanceByGroup, loadBalanceByTeacher, saveTeachingLoad } from '../db/repo/teaching-load'
+import { loadBalanceByGroup, loadBalanceByTeacher, planRowOptions, saveTeachingLoad } from '../db/repo/teaching-load'
 import { teachingLoad } from '../db/schema/load'
 import { otherLoad } from '../db/schema/system'
 import { lesson, templateEntry } from '../db/schema/schedule'
@@ -48,6 +50,10 @@ export function registerTeachingLoadHandlers(db: Db) {
       ),
     )
     return { row: result.row, teacherHoursOverYear: result.teacherHoursOverYear } as unknown as TeachingLoadSaveResult
+  })
+
+  handle('teachingLoad:planRowOptions', teachingLoadPlanRowOptionsInput, (target) => {
+    return planRowOptions(db, target) as unknown as CurriculumRow[]
   })
 
   handle('teachingLoad:delete', teachingLoadDeleteInput, ({ id }) => {

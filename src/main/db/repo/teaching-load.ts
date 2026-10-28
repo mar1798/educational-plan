@@ -150,21 +150,13 @@ export function saveTeachingLoad(
 
 type StudyGroupRow = typeof studyGroup.$inferSelect
 
-/**
- * Группы, на которые ложится нагрузка: сама группа или действующие участники потока.
- * Попутно проверяется, что поток из того же полугодия, а подгруппа — из схемы деления
- * этой группы: иначе при расформировании потока (§3.5a) чужая подгруппа расползалась
- * по группам-участницам.
- */
-function loadTargetGroups(tx: DbLike, input: TeachingLoadInput): StudyGroupRow[] {
-  if (input.streamId != null) {
-    const s = tx.select().from(stream).where(eq(stream.id, input.streamId)).get()
-    if (!s) throw new NotFoundError('stream', input.streamId)
-    if (s.semesterId !== input.semesterId) {
+/** Группа или действующие участники потока; поток обязан быть из того же полугодия. */
+function targetGroupsOf(tx: DbLike, target: { semesterId: number; groupId: number | null; streamId: number | null }): StudyGroupRow[] {
+  if (target.streamId != null) {
+    const s = tx.select().from(stream).where(eq(stream.id, target.streamId)).get()
+    if (!s) throw new NotFoundError('stream', target.streamId)
+    if (s.semesterId !== target.semesterId) {
       throw new LoadValidationError(`Поток «${s.name}» создан в другом полугодии — выберите поток этого полугодия`)
-    }
-    if (input.divisionSchemeId != null || input.subgroupId != null) {
-      throw new LoadValidationError('Подгруппу можно указать только у нагрузки группы, у потока занимаются все группы целиком')
     }
     return tx
       .select({ g: studyGroup })
@@ -174,9 +166,27 @@ function loadTargetGroups(tx: DbLike, input: TeachingLoadInput): StudyGroupRow[]
       .all()
       .map((r) => r.g)
   }
+  if (target.groupId == null) return []
+  const group = tx.select().from(studyGroup).where(eq(studyGroup.id, target.groupId)).get()
+  if (!group) throw new NotFoundError('study_group', target.groupId)
+  return [group]
+}
 
-  const group = tx.select().from(studyGroup).where(eq(studyGroup.id, input.groupId!)).get()
-  if (!group) throw new NotFoundError('study_group', input.groupId!)
+/**
+ * Группы, на которые ложится нагрузка, плюс проверка подгруппы: она берётся только из
+ * схемы деления этой группы и не ставится на поток — иначе при расформировании потока
+ * (§3.5a) чужая подгруппа расползалась по группам-участницам.
+ */
+function loadTargetGroups(tx: DbLike, input: TeachingLoadInput): StudyGroupRow[] {
+  const groups = targetGroupsOf(tx, input)
+  if (input.streamId != null) {
+    if (input.divisionSchemeId != null || input.subgroupId != null) {
+      throw new LoadValidationError('Подгруппу можно указать только у нагрузки группы, у потока занимаются все группы целиком')
+    }
+    return groups
+  }
+
+  const group = groups[0]!
   if ((input.divisionSchemeId == null) !== (input.subgroupId == null)) {
     throw new LoadValidationError('Подгруппа указывается вместе со схемой деления')
   }
@@ -193,27 +203,75 @@ function loadTargetGroups(tx: DbLike, input: TeachingLoadInput): StudyGroupRow[]
 }
 
 /**
- * Строка плана обязана быть «своей» для каждой группы цели — тот же инвариант, по которому
- * её подбирает импорт годовой нагрузки: план специальности и года набора группы, её курс
- * и `plan_semester_no = (курс − 1) × 2 + полугодие` (решение п. 38). У потока он же
- * держит «одна строка плана на весь поток» (решение п. 27).
+ * Строка плана «своя» для группы — тот же инвариант, по которому её подбирает импорт
+ * годовой нагрузки: план специальности и года набора группы, её курс и
+ * `plan_semester_no = (курс − 1) × 2 + полугодие` (решение п. 38). Одна функция и для
+ * проверки при записи, и для списка выбора в диалоге — расходиться им нельзя.
  */
+function planRowFits(
+  plan: typeof curriculum.$inferSelect | undefined,
+  row: typeof curriculumRow.$inferSelect,
+  g: StudyGroupRow,
+  halfYear: number,
+): boolean {
+  return (
+    plan != null &&
+    plan.specialityId === g.specialityId &&
+    plan.admissionYear === g.admissionYear &&
+    row.course === g.course &&
+    row.semesterNo === (g.course - 1) * 2 + halfYear
+  )
+}
+
+/** У потока строка должна подходить каждому участнику — так держится «одна строка плана на весь поток» (решение п. 27). */
 function assertPlanRowFits(tx: DbLike, row: typeof curriculumRow.$inferSelect, groups: StudyGroupRow[], halfYear: number): void {
   const plan = tx.select().from(curriculum).where(eq(curriculum.id, row.curriculumId)).get()
   for (const g of groups) {
-    const planSemesterNo = (g.course - 1) * 2 + halfYear
-    const fits =
-      plan != null &&
-      plan.specialityId === g.specialityId &&
-      plan.admissionYear === g.admissionYear &&
-      row.course === g.course &&
-      row.semesterNo === planSemesterNo
-    if (!fits) {
+    if (!planRowFits(plan, row, g, halfYear)) {
+      const planSemesterNo = (g.course - 1) * 2 + halfYear
       throw new LoadValidationError(
         `Строка плана не подходит группе «${g.name}»: нужна строка из плана её специальности и года набора ${g.admissionYear}, курс ${g.course}, семестр ${planSemesterNo}`,
       )
     }
   }
+}
+
+/**
+ * Строки плана, которые можно назначить группе или потоку в полугодии. Без этого диалог
+ * нагрузки показывал все ~500 строк всех планов с одинаковыми подписями, и найти «свою»
+ * можно было только перебором до ответа сервера.
+ */
+export function planRowOptions(
+  tx: DbLike,
+  target: { semesterId: number; groupId: number | null; streamId: number | null },
+): (typeof curriculumRow.$inferSelect)[] {
+  const sem = tx.select().from(semester).where(eq(semester.id, target.semesterId)).get()
+  if (!sem) throw new NotFoundError('semester', target.semesterId)
+  const groups = targetGroupsOf(tx, target)
+  const first = groups[0]
+  if (!first) return []
+
+  const plans = tx
+    .select()
+    .from(curriculum)
+    .where(and(eq(curriculum.specialityId, first.specialityId), eq(curriculum.admissionYear, first.admissionYear)))
+    .all()
+  if (plans.length === 0) return []
+  const rows = tx
+    .select()
+    .from(curriculumRow)
+    .where(
+      and(
+        inArray(
+          curriculumRow.curriculumId,
+          plans.map((p) => p.id),
+        ),
+        isNull(curriculumRow.validTo),
+      ),
+    )
+    .all()
+  const planById = new Map(plans.map((p) => [p.id, p]))
+  return rows.filter((r) => groups.every((g) => planRowFits(planById.get(r.curriculumId), r, g, sem.no)))
 }
 
 /**

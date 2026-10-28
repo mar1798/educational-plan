@@ -7,6 +7,7 @@ import {
   loadBalanceByGroup,
   loadBalanceByTeacher,
   LoadValidationError,
+  planRowOptions,
   saveTeachingLoad,
   totalTeacherHours,
 } from '../../src/main/db/repo/teaching-load'
@@ -155,6 +156,21 @@ describe('нагрузка: квалификация, недельный лим�
       expect(() =>
         saveTeachingLoad(ctx.db, { ...baseInput(world), groupId: null, streamId: s.id, divisionSchemeId: 1, subgroupId: 1 }, '2026-09-01', null),
       ).toThrow(LoadValidationError)
+    })
+
+    it('список строк плана — только те, что пройдут проверку при записи', () => {
+      const foreign = ctx.db
+        .insert(schema.curriculumRow)
+        .values({ curriculumId: world.curriculumId, disciplineId: world.disciplineId, course: 2, semesterNo: 3, credits: 4, hoursTotal: 120, hoursClassroom: 80, validFrom: '2026-01-01' })
+        .returning({ id: schema.curriculumRow.id })
+        .get().id
+      const ids = planRowOptions(ctx.db, { semesterId: world.semesterId, groupId: world.groupId, streamId: null }).map((r) => r.id)
+      expect(ids).toEqual([world.curriculumRowId])
+      expect(ids).not.toContain(foreign)
+
+      const s = createStream(ctx.db, { semesterId: world.semesterId, name: 'Поток', groupIds: [world.groupId, addGroup('12 СД', 1)], validFrom: '2026-09-01' })
+      expect(planRowOptions(ctx.db, { semesterId: world.semesterId, groupId: null, streamId: s.id }).map((r) => r.id)).toEqual([world.curriculumRowId])
+      expect(planRowOptions(ctx.db, { semesterId: world.semesterId, groupId: null, streamId: null })).toEqual([])
     })
 
     it('не берёт поток из другого полугодия', () => {
