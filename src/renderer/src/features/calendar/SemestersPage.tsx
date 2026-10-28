@@ -15,6 +15,11 @@ import { notifyError } from '../../ui/toast'
 
 type SemesterFormValues = z.infer<typeof semesterSaveInput>
 
+// В БД сущность называется semester, но это полугодие учебного года (решения п. 38):
+// номер семестра по плану (3, 4, …) у каждой группы свой и вычисляется из курса.
+// Подпись «1-й/2-й семестр» путала завуча — он искал в списке семестры 3 и 4.
+const HALF_LABEL: Record<Semester['no'], string> = { 1: 'I полугодие', 2: 'II полугодие' }
+
 const STATUS_LABEL: Record<Semester['status'], string> = {
   planning: 'Планирование',
   active: 'Идёт',
@@ -24,7 +29,7 @@ const STATUS_LABEL: Record<Semester['status'], string> = {
 function buildColumns(yearNameById: Map<number, string>): ColumnDef<Semester>[] {
   return [
     { id: 'year', header: 'Учебный год', accessorFn: (row) => yearNameById.get(row.academicYearId) ?? row.academicYearId },
-    { id: 'no', header: 'Семестр', accessorFn: (row) => `${row.no}-й` },
+    { id: 'no', header: 'Полугодие', accessorFn: (row) => HALF_LABEL[row.no] },
     { accessorKey: 'startsOn', header: 'Начало' },
     { accessorKey: 'endsOn', header: 'Окончание' },
     { accessorKey: 'weeksCount', header: 'Недель' },
@@ -41,7 +46,7 @@ const actions: ReferenceCrudAction<Semester>[] = [
     key: 'delete',
     labelRu: () => ruCommon.delete,
     variant: 'danger',
-    confirmTitleRu: (row) => `Удалить ${row.no}-й семестр?`,
+    confirmTitleRu: (row) => `Удалить ${HALF_LABEL[row.no]}?`,
     confirmBodyRu: () => ruCommon.confirmDeleteBody,
     confirmLabelRu: ruCommon.yesDelete,
     successRu: () => ruCommon.deletedOk,
@@ -62,11 +67,11 @@ function SemesterFields({ control, years }: { control: Control<SemesterFormValue
       <SelectField
         control={control}
         name="no"
-        label="Семестр"
+        label="Полугодие"
         valueType="number"
         options={[
-          { value: '1', label: '1-й' },
-          { value: '2', label: '2-й' },
+          { value: '1', label: 'I полугодие (семестры 1, 3, 5, 7)' },
+          { value: '2', label: 'II полугодие (семестры 2, 4, 6)' },
         ]}
       />
       <DateField control={control} name="startsOn" label="Начало" />
@@ -106,9 +111,9 @@ export function SemestersPage() {
   return (
     <ReferenceCrudPage<Semester, SemesterFormValues>
       entityName="semester"
-      titleRu="Семестры"
-      createTitleRu="Новый семестр"
-      editTitleRu="Семестр"
+      titleRu="Полугодия"
+      createTitleRu="Новое полугодие"
+      editTitleRu="Полугодие"
       columns={buildColumns(yearNameById)}
       resolver={zodResolver(semesterSaveInput)}
       defaultValues={defaultValues}

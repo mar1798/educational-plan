@@ -200,7 +200,7 @@ export function CalendarYearPage() {
         <div className="page-toolbar">
           {semesters.map((s) => (
             <button key={s.id} type="button" className="btn" onClick={() => void generateForSemester(s.id)}>
-              Сгенерировать дни: {s.no}-й семестр ({s.startsOn} – {s.endsOn})
+              Сгенерировать дни: {s.no === 1 ? 'I' : 'II'} полугодие ({s.startsOn} – {s.endsOn})
             </button>
           ))}
         </div>

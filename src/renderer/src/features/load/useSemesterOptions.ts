@@ -23,7 +23,7 @@ export function useSemesterOptions() {
   const label = (id: number) => {
     const sem = semesters.find((s) => s.id === id)
     if (!sem) return `#${id}`
-    return `${yearNameById.get(sem.academicYearId) ?? sem.academicYearId}, ${sem.no}-й семестр`
+    return `${yearNameById.get(sem.academicYearId) ?? sem.academicYearId}, ${sem.no === 1 ? 'I' : 'II'} полугодие`
   }
 
   return { semesters, academicYears, label }

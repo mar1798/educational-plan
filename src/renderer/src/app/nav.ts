@@ -64,7 +64,7 @@ export const navSections: NavSection[] = [
     title: 'Календарь',
     items: [
       { label: 'Учебные годы', path: '/academic-years' },
-      { label: 'Семестры', path: '/semesters' },
+      { label: 'Полугодия', path: '/semesters' },
       { label: 'Периоды учебного процесса', path: '/calendar-periods' },
       { label: 'Календарь года', path: '/calendar-year' },
     ],
