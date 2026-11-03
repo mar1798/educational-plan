@@ -42,6 +42,7 @@ const columns: ColumnDef<Discipline>[] = [
 
 const defaultValues: DisciplineFormValues = {
   name: '',
+  shortName: null,
   indexCode: null,
   block: 1,
   cycle: 'spo3',
@@ -91,6 +92,7 @@ export function DisciplinesPage() {
       defaultValues={defaultValues}
       toFormValues={(row) => ({
         name: row.name,
+        shortName: row.shortName,
         indexCode: row.indexCode,
         block: row.block,
         cycle: row.cycle,
@@ -102,6 +104,7 @@ export function DisciplinesPage() {
       renderFields={(control) => (
         <>
           <TextField control={control} name="name" label="Название дисциплины" />
+          <TextField control={control} name="shortName" label="Сокращение для расписания" nullable />
           <TextField control={control} name="indexCode" label="Индекс по плану" nullable />
           <SelectField
             control={control}

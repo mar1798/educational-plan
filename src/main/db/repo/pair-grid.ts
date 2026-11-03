@@ -9,11 +9,11 @@ import type { DbLike } from './types'
 // (запрет «без предзаполненного справочника» в PLAN.md касается именно календаря/праздников).
 const DEFAULT_ROWS: { pairNo: number; startsAt: string; endsAt: string }[] = [
   { pairNo: 1, startsAt: '08:00', endsAt: '09:30' },
-  { pairNo: 2, startsAt: '09:40', endsAt: '11:10' },
-  { pairNo: 3, startsAt: '11:30', endsAt: '13:00' },
-  { pairNo: 4, startsAt: '13:10', endsAt: '14:40' },
-  { pairNo: 5, startsAt: '14:50', endsAt: '16:20' },
-  { pairNo: 6, startsAt: '16:30', endsAt: '18:00' },
+  { pairNo: 2, startsAt: '09:35', endsAt: '11:05' },
+  { pairNo: 3, startsAt: '11:10', endsAt: '12:40' },
+  { pairNo: 4, startsAt: '13:00', endsAt: '14:30' },
+  { pairNo: 5, startsAt: '14:35', endsAt: '16:05' },
+  { pairNo: 6, startsAt: '16:10', endsAt: '17:40' },
 ]
 
 export function ensurePairGrid(db: DbLike): void {

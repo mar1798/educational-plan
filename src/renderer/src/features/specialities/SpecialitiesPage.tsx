@@ -23,7 +23,7 @@ const columns: ColumnDef<Speciality>[] = [
   },
 ]
 
-const defaultValues: SpecialityFormValues = { code: '', name: '', qualification: null, semestersTotal: 6 }
+const defaultValues: SpecialityFormValues = { code: '', name: '', qualification: null, semestersTotal: 6, sortOrder: null }
 
 const actions: ReferenceCrudAction<Speciality>[] = [
   {
@@ -60,6 +60,7 @@ export function SpecialitiesPage() {
         name: row.name,
         qualification: row.qualification,
         semestersTotal: row.semestersTotal,
+        sortOrder: row.sortOrder,
       })}
       renderFields={(control) => (
         <>
@@ -67,6 +68,7 @@ export function SpecialitiesPage() {
           <TextField control={control} name="name" label="Название" />
           <TextField control={control} name="qualification" label="Квалификация" nullable />
           <NumberField control={control} name="semestersTotal" label="Семестров всего" min={1} max={12} />
+          <NumberField control={control} name="sortOrder" label="Порядок в сводном расписании" nullable min={0} />
         </>
       )}
       list={(includeArchived) => api.invoke('specialities:list', { includeArchived })}

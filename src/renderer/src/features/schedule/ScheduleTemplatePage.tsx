@@ -1,7 +1,7 @@
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragOverEvent } from '@dnd-kit/core'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import type { Room, ScheduleTemplate, StudyGroup, Teacher, TemplateEntryView, UnassignedLoadRow } from '../../../../shared/ipc/contract'
+import type { Room, ScheduleTemplate, StudyGroup, SummaryGroupColumn, Teacher, TemplateEntryView, UnassignedLoadRow } from '../../../../shared/ipc/contract'
 import { describeConflicts } from '../../../../shared/schedule/messages'
 import { findConflicts, type SlotEntry } from '../../../../solver/validate'
 import { api } from '../../api/client'
@@ -13,18 +13,24 @@ import { EntryDialog } from './EntryDialog'
 import { NewVersionDialog } from './NewVersionDialog'
 import { RolloutDialog } from './RolloutDialog'
 import { ScheduleGrid } from './ScheduleGrid'
+import { SummaryGrid } from './SummaryGrid'
 import { UnassignedLoadPanel } from './UnassignedLoadPanel'
-import { cellId, parseCellId, type DragPayload } from './types'
+import { cellId, parseCellId, parseSummaryCellId, summaryCellId, type DragPayload } from './types'
 import { FilterSelect } from '../../ui/FilterSelect'
 import { useInitialSelection } from '../../ui/useInitialSelection'
 
-type CutKind = 'group' | 'teacher' | 'room'
+type CutKind = 'group' | 'teacher' | 'room' | 'summary'
 type ViewMode = 'week' | 'day'
 
 const WEEK_DAYS = [1, 2, 3, 4, 5, 6]
 
 /** Подпись второго фильтра зависит от разреза: «Все преподаватели» в поле «Группа» сбивало. */
-const CUT_TARGET_LABEL: Record<CutKind, string> = { group: 'Группа', teacher: 'Преподаватель', room: 'Кабинет' }
+const CUT_TARGET_LABEL: Record<CutKind, string> = {
+  group: 'Группа',
+  teacher: 'Преподаватель',
+  room: 'Кабинет',
+  summary: 'Группа',
+}
 
 // Стабильные ссылки: пустая сетка не должна пересоздавать зависимые useMemo на каждый рендер.
 const EMPTY_ENTRIES: TemplateEntryView[] = []
@@ -62,7 +68,11 @@ export function ScheduleTemplatePage() {
   // Данные хранятся вместе с версией шаблона, к которой относятся: пока ответ по новой версии
   // не пришёл, сетка пустая, а не заполнена занятиями предыдущей — перетаскивание в этот
   // момент правило бы не тот шаблон, что видно на экране.
-  const [loaded, setLoaded] = useState<{ templateId: number | ''; entries: TemplateEntryView[]; unassigned: UnassignedLoadRow[] }>({
+  const [loaded, setLoaded] = useState<{
+    templateId: number | ''
+    entries: TemplateEntryView[]
+    unassigned: UnassignedLoadRow[]
+  }>({
     templateId: '',
     entries: [],
     unassigned: [],
@@ -76,6 +86,11 @@ export function ScheduleTemplatePage() {
   const [pairNumbers, setPairNumbers] = useState<number[]>([1, 2, 3, 4, 5, 6])
   const [pairTimes, setPairTimes] = useState<Map<number, string>>(new Map())
 
+  // Колонки сводного вида приходят от main уже в порядке колледжа (курс → специальность → бюджет → номер).
+  const [summaryColumns, setSummaryColumns] = useState<SummaryGroupColumn[]>([])
+  const [summaryCourse, setSummaryCourse] = useState<number | ''>('')
+  const [summarySpecialityId, setSummarySpecialityId] = useState<number | ''>('')
+
   const [cutKind, setCutKind] = useState<CutKind>('group')
   const [cutTargetId, setCutTargetId] = useState<number | ''>(link.groupId)
   const [viewMode, setViewMode] = useState<ViewMode>(link.dayOfWeek === '' ? 'week' : 'day')
@@ -85,13 +100,17 @@ export function ScheduleTemplatePage() {
   const [showNewVersion, setShowNewVersion] = useState(false)
   const [showRollout, setShowRollout] = useState(false)
   const [confirmDeleteTemplate, setConfirmDeleteTemplate] = useState(false)
-  const [hoverConflict, setHoverConflict] = useState<{ cellKey: string; message: string } | null>(null)
+  const [hoverConflict, setHoverConflict] = useState<{
+    cellKey: string
+    message: string
+  } | null>(null)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
 
   useEffect(() => {
     void api.invoke('groups:list', {}).then((res) => (res.ok ? setGroups(res.value) : notifyError(res.error.message)))
     void api.invoke('teachers:list', {}).then((res) => (res.ok ? setTeachers(res.value) : notifyError(res.error.message)))
+    void api.invoke('scheduleTemplates:summaryGroups', {}).then((res) => (res.ok ? setSummaryColumns(res.value) : notifyError(res.error.message)))
     void api.invoke('rooms:list', {}).then((res) => (res.ok ? setRooms(res.value) : notifyError(res.error.message)))
     void api.invoke('pairGrid:list', {}).then((res) => {
       if (!res.ok) return notifyError(res.error.message)
@@ -118,12 +137,22 @@ export function ScheduleTemplatePage() {
   const refreshTemplateData = useCallback((id: number) => {
     void api.invoke('scheduleTemplates:entries', { templateId: id }).then((res) => {
       if (shownTemplateRef.current !== id) return
-      if (res.ok) setLoaded((prev) => ({ templateId: id, entries: res.value, unassigned: prev.templateId === id ? prev.unassigned : [] }))
+      if (res.ok)
+        setLoaded((prev) => ({
+          templateId: id,
+          entries: res.value,
+          unassigned: prev.templateId === id ? prev.unassigned : [],
+        }))
       else notifyError(res.error.message)
     })
     void api.invoke('scheduleTemplates:unassignedLoad', { templateId: id }).then((res) => {
       if (shownTemplateRef.current !== id) return
-      if (res.ok) setLoaded((prev) => ({ templateId: id, entries: prev.templateId === id ? prev.entries : [], unassigned: res.value }))
+      if (res.ok)
+        setLoaded((prev) => ({
+          templateId: id,
+          entries: prev.templateId === id ? prev.entries : [],
+          unassigned: res.value,
+        }))
       else notifyError(res.error.message)
     })
   }, [])
@@ -156,11 +185,29 @@ export function ScheduleTemplatePage() {
     [teacherById, groupById, roomById, entries],
   )
 
-  const cutOptions = cutKind === 'group' ? groups.map((g) => ({ id: g.id, label: g.name })) : cutKind === 'teacher' ? teachers.map((t) => ({ id: t.id, label: `${t.lastName} ${t.firstName}` })) : rooms.map((r) => ({ id: r.id, label: r.number }))
+  const cutOptions =
+    cutKind === 'summary'
+      ? []
+      : cutKind === 'group'
+        ? groups.map((g) => ({ id: g.id, label: g.name }))
+        : cutKind === 'teacher'
+          ? teachers.map((t) => ({
+              id: t.id,
+              label: `${t.lastName} ${t.firstName}`,
+            }))
+          : rooms.map((r) => ({ id: r.id, label: r.number }))
 
   // Смена разреза и режима — только фильтрация уже загруженных записей: данные пришли
   // одним запросом, перезагрузки страницы нет (задача 4.6).
+  const visibleSummaryColumns = useMemo(
+    () => summaryColumns.filter((c) => (summaryCourse === '' || c.course === summaryCourse) && (summarySpecialityId === '' || c.specialityId === summarySpecialityId)),
+    [summaryColumns, summaryCourse, summarySpecialityId],
+  )
+  const summaryCourses = useMemo(() => [...new Set(summaryColumns.map((c) => c.course))].sort((a, b) => a - b), [summaryColumns])
+  const summarySpecialities = useMemo(() => [...new Map(summaryColumns.map((c) => [c.specialityId, c.specialityCode || c.specialityName])).entries()], [summaryColumns])
+
   const filteredEntries = useMemo(() => {
+    if (cutKind === 'summary') return entries
     if (cutTargetId === '') return entries
     return entries.filter((e) => {
       if (cutKind === 'group') return e.attendees.some((a) => a.groupId === cutTargetId)
@@ -169,7 +216,7 @@ export function ScheduleTemplatePage() {
     })
   }, [entries, cutKind, cutTargetId])
 
-  const visibleDays = viewMode === 'day' ? [viewDay] : WEEK_DAYS
+  const visibleDays = viewMode === 'day' && cutKind !== 'summary' ? [viewDay] : WEEK_DAYS
 
   const allSlotEntries: SlotEntry[] = useMemo(
     () =>
@@ -180,7 +227,11 @@ export function ScheduleTemplatePage() {
         weekParity: e.weekParity,
         teacherId: e.teacherId,
         roomId: e.roomId,
-        attendees: e.attendees.map((a) => ({ groupId: a.groupId, posFrom: a.posFrom, posTo: a.posTo })),
+        attendees: e.attendees.map((a) => ({
+          groupId: a.groupId,
+          posFrom: a.posFrom,
+          posTo: a.posTo,
+        })),
       })),
     [entries],
   )
@@ -193,29 +244,58 @@ export function ScheduleTemplatePage() {
       weekParity: payload.kind === 'entry' ? payload.weekParity : 'all',
       teacherId: payload.teacherId,
       roomId: payload.kind === 'entry' ? payload.roomId : null,
-      attendees: payload.attendees.map((a) => ({ groupId: a.groupId, posFrom: a.posFrom, posTo: a.posTo })),
+      attendees: payload.attendees.map((a) => ({
+        groupId: a.groupId,
+        posFrom: a.posFrom,
+        posTo: a.posTo,
+      })),
     }
+  }
+
+  /**
+   * Куда упала карточка. В сводной сетке перенос разрешён только внутри колонки своей группы
+   * (по вертикали): иначе дроп в чужую колонку выглядел бы переносом занятия другой группе.
+   */
+  function dropTarget(overId: string, payload: DragPayload | undefined): { dayOfWeek: number; pairNo: number; cellKey: string } | null {
+    const summary = parseSummaryCellId(overId)
+    if (summary) {
+      if (payload?.kind !== 'entry' || payload.sourceGroupId !== summary.groupId) return null
+      return {
+        dayOfWeek: summary.dayOfWeek,
+        pairNo: summary.pairNo,
+        cellKey: summaryCellId(summary.dayOfWeek, summary.pairNo, summary.groupId),
+      }
+    }
+    const cell = parseCellId(overId)
+    return cell ? { ...cell, cellKey: cellId(cell.dayOfWeek, cell.pairNo) } : null
   }
 
   function handleDragOver(event: DragOverEvent) {
     const overId = event.over?.id
-    const cell = typeof overId === 'string' ? parseCellId(overId) : null
     const payload = event.active.data.current as DragPayload | undefined
-    if (!cell || !payload) {
+    const target = typeof overId === 'string' ? dropTarget(overId, payload) : null
+    if (!target || !payload) {
       setHoverConflict(null)
       return
     }
-    const candidate = candidateFromPayload(payload, cell.dayOfWeek, cell.pairNo)
+    const candidate = candidateFromPayload(payload, target.dayOfWeek, target.pairNo)
     const conflicts = findConflicts(candidate, allSlotEntries)
-    setHoverConflict(conflicts.length > 0 ? { cellKey: cellId(cell.dayOfWeek, cell.pairNo), message: describeConflicts(conflicts, nameResolver) } : null)
+    setHoverConflict(
+      conflicts.length > 0
+        ? {
+            cellKey: target.cellKey,
+            message: describeConflicts(conflicts, nameResolver),
+          }
+        : null,
+    )
   }
 
   function handleDragEnd(event: DragEndEvent) {
     setHoverConflict(null)
     if (templateId === '') return
     const overId = event.over?.id
-    const cell = typeof overId === 'string' ? parseCellId(overId) : null
     const payload = event.active.data.current as DragPayload | undefined
+    const cell = typeof overId === 'string' ? dropTarget(overId, payload) : null
     if (!cell || !payload) return
 
     if (payload.kind === 'load') {
@@ -258,7 +338,11 @@ export function ScheduleTemplatePage() {
   }
 
   async function toggleLock(entry: TemplateEntryView) {
-    const res = await api.invoke('scheduleTemplates:setLocked', { id: entry.id, rowVersion: entry.rowVersion, isLocked: !entry.isLocked })
+    const res = await api.invoke('scheduleTemplates:setLocked', {
+      id: entry.id,
+      rowVersion: entry.rowVersion,
+      isLocked: !entry.isLocked,
+    })
     if (res.ok) refreshTemplateData(templateId as number)
     else notifyError(res.error.message)
   }
@@ -267,10 +351,17 @@ export function ScheduleTemplatePage() {
     if (templateId === '') return
     const tmpl = templates.find((t) => t.id === templateId)
     if (!tmpl) return
-    const res = await api.invoke('scheduleTemplates:activate', { id: tmpl.id, rowVersion: tmpl.rowVersion })
+    const res = await api.invoke('scheduleTemplates:activate', {
+      id: tmpl.id,
+      rowVersion: tmpl.rowVersion,
+    })
     if (res.ok) {
       notifySuccess('Версия активирована')
-      void api.invoke('scheduleTemplates:list', { semesterId: selectedSemesterId as number }).then((r) => r.ok && setTemplates(r.value))
+      void api
+        .invoke('scheduleTemplates:list', {
+          semesterId: selectedSemesterId as number,
+        })
+        .then((r) => r.ok && setTemplates(r.value))
     } else {
       notifyError(res.error.message)
     }
@@ -280,21 +371,35 @@ export function ScheduleTemplatePage() {
 
   async function archiveCurrentTemplate() {
     if (!currentTemplate) return
-    const res = await api.invoke('scheduleTemplates:archive', { id: currentTemplate.id, rowVersion: currentTemplate.rowVersion })
+    const res = await api.invoke('scheduleTemplates:archive', {
+      id: currentTemplate.id,
+      rowVersion: currentTemplate.rowVersion,
+    })
     if (!res.ok) return notifyError(res.error.message)
     notifySuccess('Версия отправлена в архив')
-    void api.invoke('scheduleTemplates:list', { semesterId: selectedSemesterId as number }).then((r) => r.ok && setTemplates(r.value))
+    void api
+      .invoke('scheduleTemplates:list', {
+        semesterId: selectedSemesterId as number,
+      })
+      .then((r) => r.ok && setTemplates(r.value))
   }
 
   /** Удаление версии целиком (§4.1): вместе со всей её сеткой, одной отменяемой операцией. */
   async function deleteCurrentTemplate() {
     if (!currentTemplate) return
-    const res = await api.invoke('scheduleTemplates:delete', { id: currentTemplate.id, rowVersion: currentTemplate.rowVersion })
+    const res = await api.invoke('scheduleTemplates:delete', {
+      id: currentTemplate.id,
+      rowVersion: currentTemplate.rowVersion,
+    })
     setConfirmDeleteTemplate(false)
     if (!res.ok) return notifyError(res.error.message)
     notifySuccess('Версия шаблона удалена')
     setTemplateId('')
-    void api.invoke('scheduleTemplates:list', { semesterId: selectedSemesterId as number }).then((r) => r.ok && setTemplates(r.value))
+    void api
+      .invoke('scheduleTemplates:list', {
+        semesterId: selectedSemesterId as number,
+      })
+      .then((r) => r.ok && setTemplates(r.value))
   }
 
   async function handleExportExcel(kind: 'group' | 'teacher' | 'summary') {
@@ -304,7 +409,18 @@ export function ScheduleTemplatePage() {
       notifyError(kind === 'group' ? 'Выберите группу в разрезе выше' : 'Выберите преподавателя в разрезе выше')
       return
     }
-    const res = await api.invoke('export:excel', { templateId, kind, targetId })
+    const res = await api.invoke('export:excel', {
+      templateId,
+      kind,
+      targetId,
+    })
+    if (!res.ok) return notifyError(res.error.message)
+    if (!('cancelled' in res.value)) notifySuccess(`Сохранено: ${res.value.path}`)
+  }
+
+  async function handleExportCollege() {
+    if (templateId === '') return
+    const res = await api.invoke('export:collegeScheduleExcel', { templateId })
     if (!res.ok) return notifyError(res.error.message)
     if (!('cancelled' in res.value)) notifySuccess(`Сохранено: ${res.value.path}`)
   }
@@ -314,7 +430,10 @@ export function ScheduleTemplatePage() {
       notifyError('Выберите группу в разрезе выше, чтобы напечатать её расписание')
       return
     }
-    const res = await api.invoke('export:pdf', { templateId, groupId: cutTargetId })
+    const res = await api.invoke('export:pdf', {
+      templateId,
+      groupId: cutTargetId,
+    })
     if (!res.ok) return notifyError(res.error.message)
     if (!('cancelled' in res.value)) notifySuccess(`Сохранено: ${res.value.path}`)
   }
@@ -324,12 +443,7 @@ export function ScheduleTemplatePage() {
       <div className="page-header">
         <h1>Шаблон недели</h1>
         <div className="toolbar-actions">
-          <FilterSelect
-            label="Семестр"
-            hint="Семестр, чьи версии шаблона показывать"
-            value={selectedSemesterId}
-            onChange={(v) => setSemesterId(v === '' ? '' : Number(v))}
-          >
+          <FilterSelect label="Семестр" hint="Семестр, чьи версии шаблона показывать" value={selectedSemesterId} onChange={(v) => setSemesterId(v === '' ? '' : Number(v))}>
             <option value="">Выберите семестр</option>
             {semesters.map((s) => (
               <option key={s.id} value={s.id}>
@@ -350,13 +464,7 @@ export function ScheduleTemplatePage() {
               </option>
             ))}
           </FilterSelect>
-          <button
-            type="button"
-            className="btn"
-            disabled={selectedSemesterId === ''}
-            title={selectedSemesterId === '' ? 'Сначала выберите семестр' : undefined}
-            onClick={() => setShowNewVersion(true)}
-          >
+          <button type="button" className="btn" disabled={selectedSemesterId === ''} title={selectedSemesterId === '' ? 'Сначала выберите семестр' : undefined} onClick={() => setShowNewVersion(true)}>
             + Новая версия
           </button>
           {currentTemplate?.status === 'draft' && (
@@ -370,22 +478,11 @@ export function ScheduleTemplatePage() {
             </button>
           )}
           {currentTemplate != null && (
-            <button
-              type="button"
-              className="btn btn-danger"
-              title="Удалить версию вместе со всей её сеткой занятий"
-              onClick={() => setConfirmDeleteTemplate(true)}
-            >
+            <button type="button" className="btn btn-danger" title="Удалить версию вместе со всей её сеткой занятий" onClick={() => setConfirmDeleteTemplate(true)}>
               Удалить версию
             </button>
           )}
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={templateId === ''}
-            title={templateId === '' ? 'Сначала выберите версию шаблона' : undefined}
-            onClick={() => setShowRollout(true)}
-          >
+          <button type="button" className="btn btn-primary" disabled={templateId === ''} title={templateId === '' ? 'Сначала выберите версию шаблона' : undefined} onClick={() => setShowRollout(true)}>
             Раскатать
           </button>
         </div>
@@ -408,37 +505,54 @@ export function ScheduleTemplatePage() {
               <option value="group">По группе</option>
               <option value="teacher">По преподавателю</option>
               <option value="room">По кабинету</option>
+              <option value="summary">Сводная</option>
             </FilterSelect>
-            <FilterSelect
-              label={CUT_TARGET_LABEL[cutKind]}
-              hint="«Все» — показать сетку целиком, без отбора"
-              value={cutTargetId}
-              onChange={(v) => setCutTargetId(v === '' ? '' : Number(v))}
-            >
-              <option value="">Все</option>
-              {cutOptions.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.label}
-                </option>
-              ))}
-            </FilterSelect>
-            <FilterSelect
-              label="Вид"
-              hint="Показать всю неделю сразу или один день крупнее"
-              value={viewMode}
-              onChange={(v) => setViewMode(v as ViewMode)}
-            >
-              <option value="week">Неделя</option>
-              <option value="day">День</option>
-            </FilterSelect>
-            {viewMode === 'day' && (
-              <FilterSelect label="День" hint="День недели, показанный в сетке" value={viewDay} onChange={(v) => setViewDay(Number(v))}>
-                {WEEK_DAYS.map((d) => (
-                  <option key={d} value={d}>
-                    {WEEKDAY_LABEL[d]}
+            {cutKind === 'summary' && (
+              <>
+                <FilterSelect label="Курс" hint="Показать колонки только этого курса" value={summaryCourse} onChange={(v) => setSummaryCourse(v === '' ? '' : Number(v))}>
+                  <option value="">Все</option>
+                  {summaryCourses.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </FilterSelect>
+                <FilterSelect label="Специальность" hint="Показать колонки только этой специальности" value={summarySpecialityId} onChange={(v) => setSummarySpecialityId(v === '' ? '' : Number(v))}>
+                  <option value="">Все</option>
+                  {summarySpecialities.map(([id, label]) => (
+                    <option key={id} value={id}>
+                      {label}
+                    </option>
+                  ))}
+                </FilterSelect>
+              </>
+            )}
+            {cutKind !== 'summary' && (
+              <FilterSelect label={CUT_TARGET_LABEL[cutKind]} hint="«Все» — показать сетку целиком, без отбора" value={cutTargetId} onChange={(v) => setCutTargetId(v === '' ? '' : Number(v))}>
+                <option value="">Все</option>
+                {cutOptions.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label}
                   </option>
                 ))}
               </FilterSelect>
+            )}
+            {cutKind !== 'summary' && (
+              <>
+                <FilterSelect label="Вид" hint="Показать всю неделю сразу или один день крупнее" value={viewMode} onChange={(v) => setViewMode(v as ViewMode)}>
+                  <option value="week">Неделя</option>
+                  <option value="day">День</option>
+                </FilterSelect>
+                {viewMode === 'day' && (
+                  <FilterSelect label="День" hint="День недели, показанный в сетке" value={viewDay} onChange={(v) => setViewDay(Number(v))}>
+                    {WEEK_DAYS.map((d) => (
+                      <option key={d} value={d}>
+                        {WEEKDAY_LABEL[d]}
+                      </option>
+                    ))}
+                  </FilterSelect>
+                )}
+              </>
             )}
             <button
               type="button"
@@ -458,6 +572,11 @@ export function ScheduleTemplatePage() {
             >
               Excel: преподаватель
             </button>
+            {cutKind === 'summary' && (
+              <button type="button" className="btn btn-primary" title="Таблица «день × пара / группы» для печати, как в образце колледжа" onClick={() => void handleExportCollege()}>
+                Excel: формат колледжа
+              </button>
+            )}
             <button type="button" className="btn" onClick={() => void handleExportExcel('summary')}>
               Excel: сводное
             </button>
@@ -474,16 +593,30 @@ export function ScheduleTemplatePage() {
 
           <DndContext sensors={sensors} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
             <div className="schedule-layout">
-              <ScheduleGrid
-                days={visibleDays}
-                pairNumbers={pairNumbers}
-                pairLabel={(pairNo) => `${pairNo} пара\n${pairTimes.get(pairNo) ?? ''}`}
-                entries={filteredEntries}
-                hoverConflictCellKey={hoverConflict?.cellKey ?? null}
-                hoverConflictMessage={hoverConflict?.message ?? null}
-                onEntryClick={setEditingEntry}
-                onToggleLock={(e) => void toggleLock(e)}
-              />
+              {cutKind === 'summary' ? (
+                <SummaryGrid
+                  columns={visibleSummaryColumns}
+                  days={WEEK_DAYS}
+                  pairNumbers={pairNumbers}
+                  pairLabel={(pairNo) => `${pairNo}\n${pairTimes.get(pairNo) ?? ''}`}
+                  entries={entries}
+                  hoverConflictCellKey={hoverConflict?.cellKey ?? null}
+                  hoverConflictMessage={hoverConflict?.message ?? null}
+                  onEntryClick={setEditingEntry}
+                  onToggleLock={(e) => void toggleLock(e)}
+                />
+              ) : (
+                <ScheduleGrid
+                  days={visibleDays}
+                  pairNumbers={pairNumbers}
+                  pairLabel={(pairNo) => `${pairNo} пара\n${pairTimes.get(pairNo) ?? ''}`}
+                  entries={filteredEntries}
+                  hoverConflictCellKey={hoverConflict?.cellKey ?? null}
+                  hoverConflictMessage={hoverConflict?.message ?? null}
+                  onEntryClick={setEditingEntry}
+                  onToggleLock={(e) => void toggleLock(e)}
+                />
+              )}
               <UnassignedLoadPanel rows={unassigned} />
             </div>
           </DndContext>
@@ -509,12 +642,16 @@ export function ScheduleTemplatePage() {
           onClose={() => setShowNewVersion(false)}
           onCreated={(id) => {
             setShowNewVersion(false)
-            void api.invoke('scheduleTemplates:list', { semesterId: selectedSemesterId as number }).then((res) => {
-              if (res.ok) {
-                setTemplates(res.value)
-                setTemplateId(id)
-              }
-            })
+            void api
+              .invoke('scheduleTemplates:list', {
+                semesterId: selectedSemesterId as number,
+              })
+              .then((res) => {
+                if (res.ok) {
+                  setTemplates(res.value)
+                  setTemplateId(id)
+                }
+              })
           }}
         />
       )}

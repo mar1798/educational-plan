@@ -1,5 +1,5 @@
 import { type BrowserWindow, dialog } from 'electron'
-import { exportExcelInput, exportPdfInput, reportsExportExcelInput, reportsExportPdfInput } from '../../shared/ipc/schemas'
+import { exportCollegeScheduleInput, exportExcelInput, exportPdfInput, reportsExportExcelInput, reportsExportPdfInput } from '../../shared/ipc/schemas'
 import type { Db } from '../db/client'
 import {
   exportDeductedHoursReportExcel,
@@ -9,6 +9,7 @@ import {
   exportTeacherLoadReportExcel,
   exportTeacherScheduleExcel,
 } from '../export/excel'
+import { exportCollegeScheduleExcel } from '../export/college-schedule'
 import {
   printDeductedHoursReportToPdf,
   printGroupScheduleToPdf,
@@ -41,6 +42,13 @@ export function registerExportHandlers(db: Db, getWindow: () => BrowserWindow | 
     else await exportSummaryScheduleExcel(db, templateId, filePath)
 
     return { path: filePath }
+  })
+
+  handle('export:collegeScheduleExcel', exportCollegeScheduleInput, async ({ templateId }) => {
+    const result = await saveDialog(getWindow, 'raspisanie-kolledzh.xlsx', 'Excel', 'xlsx')
+    if (result.canceled || !result.filePath) return { cancelled: true as const }
+    await exportCollegeScheduleExcel(db, templateId, result.filePath)
+    return { path: result.filePath }
   })
 
   handle('export:pdf', exportPdfInput, async ({ templateId, groupId }) => {

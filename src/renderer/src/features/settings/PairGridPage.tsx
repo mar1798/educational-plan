@@ -3,6 +3,8 @@ import type { PairGridRow } from '../../../../shared/ipc/contract'
 import { api } from '../../api/client'
 import { EntityHistoryPanel } from '../../ui/EntityHistoryPanel'
 import { ruCommon } from '../../ui/locale'
+import { LectureCoverageSetting } from './LectureCoverageSetting'
+import { SignaturesSettings } from './SignaturesSettings'
 import { notifyError, notifySuccess } from '../../ui/toast'
 
 interface RowDraft {
@@ -140,6 +142,8 @@ export function PairGridPage() {
         </button>
       </div>
       {historyPairNo != null && <EntityHistoryPanel entity="pair_grid" id={historyPairNo} />}
+      <SignaturesSettings />
+      <LectureCoverageSetting />
     </div>
   )
 }

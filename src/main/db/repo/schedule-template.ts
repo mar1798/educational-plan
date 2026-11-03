@@ -3,13 +3,15 @@ import { describeConflict, describeConflicts, type ConflictNameResolver } from '
 import { findConflicts, type SlotEntry } from '../../../solver/validate'
 import type { AuditContext } from './audit'
 import { createRow, deleteRow, NotFoundError, OptimisticLockError, updateRow } from './base-repo'
+import { resolveLoadWeeks, type ResolvedLoadWeeks } from '../../../shared/load/weeks'
+import { studyWeeksOfSemester } from '../../services/study-weeks'
 import { ensureDeletable } from './reference-guard'
 import type { DbLike } from './types'
 import { calendarDay, calendarPeriod, semester } from '../schema/calendar'
 import { curriculumRow, discipline } from '../schema/curriculum'
 import { stream, streamMember, teachingLoad } from '../schema/load'
-import { pairGrid, room } from '../schema/org'
-import { studyGroup, subgroup, teacher } from '../schema/people'
+import { pairGrid, room, speciality } from '../schema/org'
+import { divisionScheme, studyGroup, subgroup, teacher } from '../schema/people'
 import { lesson, lessonGroup, scheduleTemplate, templateEntry } from '../schema/schedule'
 
 export class ScheduleConflictError extends Error {
@@ -143,6 +145,7 @@ export interface TemplateLookup {
   rooms: Map<number, typeof room.$inferSelect>
   groups: Map<number, typeof studyGroup.$inferSelect>
   subgroups: Map<number, typeof subgroup.$inferSelect>
+  schemes: Map<number, typeof divisionScheme.$inferSelect>
   streams: Map<number, typeof stream.$inferSelect>
   streamMembers: Map<number, (typeof streamMember.$inferSelect)[]>
   pairHours: Map<number, number>
@@ -167,6 +170,7 @@ export function buildTemplateLookup(tx: DbLike): TemplateLookup {
     rooms: byId(tx.select().from(room).all()),
     groups: byId(tx.select().from(studyGroup).all()),
     subgroups: byId(tx.select().from(subgroup).all()),
+    schemes: byId(tx.select().from(divisionScheme).all()),
     streams: byId(tx.select().from(stream).all()),
     streamMembers: members,
     pairHours: new Map(tx.select().from(pairGrid).all().map((p) => [p.pairNo, p.academicHours])),
@@ -230,12 +234,23 @@ export interface TemplateEntryView {
   teachingLoadId: number
   disciplineId: number
   disciplineName: string
+  /** Сокращение для ячейки сводного расписания; если не задано — полное название. */
+  disciplineShortName: string
+  /** Клиническое деление (схема с clinical_split): в ячейке пишется номером подгруппы без «/». */
+  isClinicalSubgroup: boolean
+  /**
+   * Сторона занятия подгруппы в ячейке сводного расписания: порядок отрезка в схеме деления
+   * (1 → слева от «/», 2 → справа, 3 → третья часть). null — занятие всей группы или потока.
+   */
+  subgroupSide: 'left' | 'right' | 'third' | null
   lessonKind: 'theory' | 'practice' | 'seminar' | 'lab'
   academicHours: number
   targetLabel: string
   attendees: ResolvedAttendee[]
   rowVersion: number
 }
+
+const SUBGROUP_SIDE: Record<number, 'left' | 'right' | 'third'> = { 1: 'left', 2: 'right', 3: 'third' }
 
 function targetLabelOf(lookup: TemplateLookup, load: { groupId: number | null; streamId: number | null }): string {
   if (load.groupId != null) return lookup.groups.get(load.groupId)?.name ?? `группа #${load.groupId}`
@@ -256,6 +271,8 @@ export function templateEntriesView(tx: DbLike, templateId: number): TemplateEnt
     const row = lookup.rows.get(load.curriculumRowId)
     const disc = row ? lookup.disciplines.get(row.disciplineId) : undefined
     const r = e.roomId != null ? lookup.rooms.get(e.roomId) : undefined
+    const sg = load.subgroupId != null ? lookup.subgroups.get(load.subgroupId) : undefined
+    const scheme = sg ? lookup.schemes.get(sg.schemeId) : undefined
 
     return {
       id: e.id,
@@ -272,6 +289,9 @@ export function templateEntriesView(tx: DbLike, templateId: number): TemplateEnt
       teachingLoadId: load.id,
       disciplineId: disc?.id ?? 0,
       disciplineName: disc?.name ?? '—',
+      disciplineShortName: disc?.shortName?.trim() || disc?.name || '—',
+      isClinicalSubgroup: sg != null && scheme?.clinicalSplit != null,
+      subgroupSide: sg ? (SUBGROUP_SIDE[sg.no] ?? 'third') : null,
       lessonKind: load.lessonKind,
       academicHours: pairHours.get(e.pairNo) ?? 2,
       targetLabel: targetLabelOf(lookup, load),
@@ -279,6 +299,41 @@ export function templateEntriesView(tx: DbLike, templateId: number): TemplateEnt
       rowVersion: e.rowVersion,
     }
   })
+}
+
+/**
+ * Порядок колонок сводного расписания (§этап А): курс → специальность (по `sort_order`, без него —
+ * в конец, по коду) → бюджет раньше контракта → номер группы. Порядок отдаёт main одним списком,
+ * чтобы экран и выгрузка в Excel не разошлись.
+ */
+export function summaryGroupColumns(tx: DbLike): import('../../../shared/ipc/contract').SummaryGroupColumn[] {
+  const specs = new Map(tx.select().from(speciality).all().map((s) => [s.id, s]))
+  const groups = tx
+    .select()
+    .from(studyGroup)
+    .where(and(isNull(studyGroup.validTo), isNull(studyGroup.mergedIntoId)))
+    .all()
+
+  const rank = (specId: number) => specs.get(specId)?.sortOrder ?? Number.MAX_SAFE_INTEGER
+  return groups
+    .map((g) => ({ g, s: specs.get(g.specialityId) }))
+    .sort(
+      (a, b) =>
+        a.g.course - b.g.course ||
+        rank(a.g.specialityId) - rank(b.g.specialityId) ||
+        (a.s?.code ?? '').localeCompare(b.s?.code ?? '', 'ru') ||
+        Number(a.g.funding === 'contract') - Number(b.g.funding === 'contract') ||
+        a.g.name.localeCompare(b.g.name, 'ru', { numeric: true }),
+    )
+    .map(({ g, s }) => ({
+      id: g.id,
+      name: g.name,
+      course: g.course,
+      specialityId: g.specialityId,
+      specialityCode: s?.code ?? '',
+      specialityName: s?.name ?? '',
+      funding: g.funding,
+    }))
 }
 
 /** Подписи всех записей шаблона для текста конфликта — строится только когда конфликт уже найден. */
@@ -653,8 +708,24 @@ export function planRollout(tx: DbLike, input: { templateId: number; dateFrom: s
   if (!sem) throw new NotFoundError('semester', tmpl.semesterId)
 
   const from = input.dateFrom > tmpl.effectiveFrom ? input.dateFrom : tmpl.effectiveFrom
-  const to = input.dateTo
+  // Версия фазы (§этап Д) действует до даты, на которую её сменила следующая: иначе раскатка фазы 1
+  // «на весь семестр» занимала бы и недели, принадлежащие фазе 2.
+  const to = tmpl.effectiveTo != null && input.dateTo > tmpl.effectiveTo ? tmpl.effectiveTo : input.dateTo
   const entries = templateEntriesView(tx, input.templateId)
+
+  // Недели действия нагрузки (§этап В/Д): занятие не материализуется за пределами week_from..week_to,
+  // даже если версию поправили руками. Каникулярные недели номера не имеют и сюда не попадают.
+  const weekNoByMonday = new Map(studyWeeksOfSemester(tx, sem.id).map((w) => [w.monday, w.no]))
+  const loadWeeks = new Map<number, ResolvedLoadWeeks>()
+  for (const loadId of new Set(entries.map((e) => e.teachingLoadId))) {
+    const load = tx.select().from(teachingLoad).where(eq(teachingLoad.id, loadId)).get()
+    if (!load) continue
+    try {
+      loadWeeks.set(loadId, resolveLoadWeeks(load, { weeksCount: sem.weeksCount, practiceStartWeek: sem.practiceStartWeek }))
+    } catch {
+      // Неверные недели: без фильтра, предупреждение видно в редакторе нагрузки.
+    }
+  }
   const isNonTheory = nonTheoryPeriodChecker(tx)
 
   const rangeLessons = tx
@@ -710,6 +781,10 @@ export function planRollout(tx: DbLike, input: { templateId: number; dateFrom: s
     for (const entry of entries) {
       if (entry.dayOfWeek !== dow) continue
       if (entry.weekParity !== 'all' && entry.weekParity !== parityOfWeek) continue
+
+      const weeks = loadWeeks.get(entry.teachingLoadId)
+      const weekNo = weekNoByMonday.get(addDays(date, -((dayOfWeekOf(date) + 6) % 7)))
+      if (weeks && weekNo != null && (weekNo < weeks.weekFrom || weekNo > weeks.weekTo)) continue
 
       const existingLesson = byEntryDate.get(`${date}#${entry.id}`) ?? bySlotLoad.get(`${date}#${entry.pairNo}#${entry.teachingLoadId}`)
       if (existingLesson) accounted.add(existingLesson.id)

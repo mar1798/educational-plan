@@ -14,6 +14,8 @@ export type DragPayload =
       roomId: number | null
       weekParity: 'all' | 'odd' | 'even'
       attendees: TemplateEntryAttendee[]
+      /** Колонка сводной сетки, из которой взяли карточку: дроп в чужую колонку игнорируется. */
+      sourceGroupId?: number
     }
 
 export function cellId(dayOfWeek: number, pairNo: number): string {
@@ -24,4 +26,15 @@ export function parseCellId(id: string): { dayOfWeek: number; pairNo: number } |
   const m = /^cell:(\d+):(\d+)$/.exec(id)
   if (!m) return null
   return { dayOfWeek: Number(m[1]), pairNo: Number(m[2]) }
+}
+
+/** Ячейка сводной сетки: день × пара × группа. Перенос разрешён только внутри колонки своей группы. */
+export function summaryCellId(dayOfWeek: number, pairNo: number, groupId: number): string {
+  return `scell:${dayOfWeek}:${pairNo}:${groupId}`
+}
+
+export function parseSummaryCellId(id: string): { dayOfWeek: number; pairNo: number; groupId: number } | null {
+  const m = /^scell:(\d+):(\d+):(\d+)$/.exec(id)
+  if (!m) return null
+  return { dayOfWeek: Number(m[1]), pairNo: Number(m[2]), groupId: Number(m[3]) }
 }

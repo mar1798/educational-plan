@@ -12,6 +12,7 @@ import {
   scheduleTemplateEntriesInput,
   scheduleTemplateUnassignedLoadInput,
   scheduleTemplatesListInput,
+  summaryGroupsInput,
   setEntryLockedInput,
 } from '../../shared/ipc/schemas'
 import type { Db } from '../db/client'
@@ -29,6 +30,7 @@ import {
   planRollout,
   removeEntry,
   setEntryLocked,
+  summaryGroupColumns,
   templateEntriesView,
   unassignedLoadForTemplate,
 } from '../db/repo/schedule-template'
@@ -65,6 +67,8 @@ export function registerScheduleTemplateHandlers(db: Db) {
   handle('scheduleTemplates:entries', scheduleTemplateEntriesInput, ({ templateId }) => {
     return templateEntriesView(db, templateId) as unknown as TemplateEntryView[]
   })
+
+  handle('scheduleTemplates:summaryGroups', summaryGroupsInput, () => summaryGroupColumns(db))
 
   handle('scheduleTemplates:unassignedLoad', scheduleTemplateUnassignedLoadInput, ({ templateId }) => {
     return unassignedLoadForTemplate(db, templateId) as unknown as UnassignedLoadRow[]
