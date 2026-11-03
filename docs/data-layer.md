@@ -111,6 +111,11 @@
 `curriculum` — `discipline`, `curriculum`, `curriculum_row`, `curriculum_week`.
 `load` — `stream`, `stream_member`, `teaching_load`.
 `calendar` — `academic_year`, `semester`, `calendar_day`, `calendar_period`.
+
+Поля этапов В–Д (таблиц по-прежнему 36, всё nullable): `semester.practice_start_week`;
+`teaching_load.week_from`, `week_to`, `hours_per_week` (пусто — равномерно по семестру, у
+практики старт с недели практики семестра); `speciality.sort_order` и `discipline.short_name` —
+для сводного расписания. Новый код мягкого ограничения — `constraint_weight.code = 'phase_stability'`.
 `schedule` — `schedule_template`, `template_entry`, `lesson`, `lesson_group`, `substitution`.
 `system` — `constraint_weight`, `operation`, `operation_snapshot`, `change_log`, `backup`, `other_load`.
 `import` — `import_profile`. `app-setting` — `app_setting`.

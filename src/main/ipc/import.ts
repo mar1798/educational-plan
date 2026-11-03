@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm'
 import type { ImportApplyResult, ImportProfile, SheetInfo } from '../../shared/ipc/contract'
 import {
   importApplyInput,
+  importGridInput,
   importListSheetsInput,
   importPreflightInput,
   importPickFileInput,
@@ -17,6 +18,7 @@ import { createRow, deleteRow, updateRow } from '../db/repo/base-repo'
 import { runOperation } from '../db/repo/operations'
 import { importProfile } from '../db/schema/import'
 import { applyCalendarPeriodRows, applyCurriculumRows, applyTeacherRows, applyTeachingLoadRows } from '../import/apply'
+import { applyGridImport, planGridImport } from '../import/grid/apply'
 import { createMissingReferences, previewMissingReferences } from '../import/missing'
 import { listSheets, readSheetGrid } from '../import/workbook'
 import { handle } from './register'
@@ -81,6 +83,19 @@ export function registerImportHandlers({ db, getWindow }: ImportDeps) {
       }
     })
     return { operationId, created: result.created, skipped: result.skipped } as ImportApplyResult
+  })
+
+  handle('import:gridPreview', importGridInput, async ({ filePath, sheetName, semesterId, bindings, headerRow }) => {
+    const grid = await readSheetGrid(filePath, sheetName)
+    return planGridImport(db, grid, { semesterId, bindings, headerRow }).plan
+  })
+
+  handle('import:gridApply', importGridInput, async ({ filePath, sheetName, semesterId, bindings, headerRow }) => {
+    const grid = await readSheetGrid(filePath, sheetName)
+    const { operationId, result } = runOperation(db, 'import', { gridImport: true, sheetName, semesterId }, (tx, operationId) =>
+      applyGridImport(tx, grid, { semesterId, bindings, headerRow }, { operationId, reason: 'загрузка расписания из файла' }),
+    )
+    return { operationId, templateId: result.templateId, created: result.created, plan: result.plan }
   })
 
   handle('import:preflight', importPreflightInput, ({ rows, semesterId, validFrom }) => {
