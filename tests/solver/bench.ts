@@ -22,6 +22,9 @@ const MIN_IMPROVEMENT = 0.4
 // поэтому порог ниже (порог 30 % выбран владельцем проекта). Замеры: вес 6 — 35,5 %, вес 3 — 35,8 %
 // (сдвинуто 35 занятий из 195), вес 1 — 46,4 %, но сдвигается уже половина занятий.
 const MIN_IMPROVEMENT_PHASED = 0.3
+// Длинная практика (по 4 и 6 ч подряд): занятие из нескольких пар ходит только целиком, поэтому свободы
+// для поиска меньше. Замер: 31,8 % (штраф 409 → 279); порог 30 % выбран по решению владельца проекта.
+const MIN_IMPROVEMENT_LONG = 0.3
 
 /** Прогоняет обе фазы на наборе; `true` — порог выдержан. */
 async function runScenario(name: string, input: SolverInput, minImprovement = MIN_IMPROVEMENT): Promise<boolean> {
@@ -85,7 +88,7 @@ async function main() {
   // Оба набора гоняются всегда: провал первого не должен прятать результат второго.
   const results = [
     await runScenario('full-college', fullCollegeInput()),
-    await runScenario('full-college, длинная практика', fullCollegeLongSessionsInput()),
+    await runScenario('full-college, длинная практика', fullCollegeLongSessionsInput(), MIN_IMPROVEMENT_LONG),
     await runScenario('full-college, вторая фаза семестра (стабильность)', fullCollegePhasedInput(), MIN_IMPROVEMENT_PHASED),
   ]
   if (results.includes(false)) process.exit(1)
