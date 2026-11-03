@@ -17,6 +17,8 @@ import {
   streamCreateInput,
   streamDisbandInput,
   streamsListForSemesterInput,
+  lectureCoverageInput,
+  suggestLectureHoursInput,
   teachingLoadDeleteInput,
   teachingLoadListInput,
   teachingLoadPlanRowOptionsInput,
@@ -31,6 +33,7 @@ import { loadBalanceByGroup, loadBalanceByTeacher, planRowOptions, saveTeachingL
 import { teachingLoad } from '../db/schema/load'
 import { otherLoad } from '../db/schema/system'
 import { lesson, templateEntry } from '../db/schema/schedule'
+import { lectureCoverage, suggestLectureHours } from '../services/lecture-coverage'
 import { handle } from './register'
 
 export function registerTeachingLoadHandlers(db: Db) {
@@ -51,6 +54,10 @@ export function registerTeachingLoadHandlers(db: Db) {
     )
     return { row: result.row, teacherHoursOverYear: result.teacherHoursOverYear } as unknown as TeachingLoadSaveResult
   })
+
+  handle('load:lectureCoverage', lectureCoverageInput, (params) => lectureCoverage(db, params))
+
+  handle('load:suggestLectureHours', suggestLectureHoursInput, (params) => suggestLectureHours(db, params))
 
   handle('teachingLoad:planRowOptions', teachingLoadPlanRowOptionsInput, (target) => {
     return planRowOptions(db, target) as unknown as CurriculumRow[]

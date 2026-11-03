@@ -1,6 +1,6 @@
 import { asc, eq } from 'drizzle-orm'
 import type { Semester } from '../../shared/ipc/contract'
-import { semesterDeleteInput, semesterSaveInput, semestersListInput } from '../../shared/ipc/schemas'
+import { semesterDeleteInput, semesterSaveInput, semesterStudyWeeksInput, semestersListInput } from '../../shared/ipc/schemas'
 import type { Db } from '../db/client'
 import { createRow, deleteRow, updateRow } from '../db/repo/base-repo'
 import { syncSemesterSchemes } from '../db/repo/division-scheme'
@@ -8,6 +8,7 @@ import { runOperation } from '../db/repo/operations'
 import { ensureDeletable } from '../db/repo/reference-guard'
 import { calendarDay, divisionScheme, semester } from '../db/schema'
 import { teachingLoad } from '../db/schema/load'
+import { studyWeeksOfSemester, studyWeeksWarning } from '../services/study-weeks'
 import { handle } from './register'
 
 export function registerSemestersHandlers(db: Db) {
@@ -30,6 +31,11 @@ export function registerSemestersHandlers(db: Db) {
     })
     return result as unknown as Semester
   })
+
+  handle('semesters:studyWeeks', semesterStudyWeeksInput, ({ semesterId }) => ({
+    weeks: studyWeeksOfSemester(db, semesterId),
+    warning: studyWeeksWarning(db, semesterId),
+  }))
 
   handle('semesters:delete', semesterDeleteInput, ({ id }) => {
     const existing = db.select().from(semester).where(eq(semester.id, id)).get()

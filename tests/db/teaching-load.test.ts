@@ -90,6 +90,21 @@ describe('нагрузка: квалификация, недельный лим�
     expect(() => saveTeachingLoad(ctx.db, { ...baseInput(world), hoursPlanned: limit }, '2026-09-01', null)).not.toThrow()
   })
 
+  it('недельный лимит проверяется по каждой неделе: пересечение лекций и практики даёт пик выше среднего', () => {
+    ctx.db.insert(schema.teacherQualification).values({ teacherId: world.teacherId, disciplineId: world.disciplineId, validFrom: '2020-01-01' }).run()
+    // теория 36 ч по 2 ч/нед на 18 недель, практика с 4-й недели по 40 ч/нед на 2 недели: в неделях 4–5 будет 42 ч
+    saveTeachingLoad(ctx.db, { ...baseInput(world), hoursPlanned: 36 }, '2026-09-01', null)
+    const practice = { ...baseInput(world), lessonKind: 'practice' as const, hoursPlanned: 80, hoursPerWeek: 40 }
+    expect(() => saveTeachingLoad(ctx.db, practice, '2026-09-01', null)).not.toThrow()
+    // ещё 4 ч в неделю с 4-й недели: 2 + 40 + 4 = 46 > 45, хотя за семестр суммарно далеко до 810 ч
+    expect(() => saveTeachingLoad(ctx.db, { ...practice, hoursPerWeek: 4, hoursPlanned: 4 }, '2026-09-01', null)).toThrow(/в неделе 4 будет 46 ч/)
+  })
+
+  it('неделя окончания за пределами семестра — ошибка с русским текстом', () => {
+    ctx.db.insert(schema.teacherQualification).values({ teacherId: world.teacherId, disciplineId: world.disciplineId, validFrom: '2020-01-01' }).run()
+    expect(() => saveTeachingLoad(ctx.db, { ...baseInput(world), weekFrom: 10, weekTo: 20 }, '2026-09-01', null)).toThrow(/выходит за пределы семестра/)
+  })
+
   it('считает часы группы через прямые строки и через поток одной суммой', () => {
     ctx.db.insert(schema.teacherQualification).values({ teacherId: world.teacherId, disciplineId: world.disciplineId, validFrom: '2020-01-01' }).run()
     saveTeachingLoad(ctx.db, { ...baseInput(world), hoursPlanned: 5 }, '2026-09-01', null)

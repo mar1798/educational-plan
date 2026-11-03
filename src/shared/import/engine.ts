@@ -175,6 +175,9 @@ export const TARGET_SCHEMAS: Record<TargetEntity, TargetFieldSpec[]> = {
     { field: 'disciplineName', labelRu: 'Дисциплина', required: true },
     { field: 'lessonKind', labelRu: 'Вид занятия (лекция/практическое/семинар/лабораторное)', required: true },
     { field: 'hoursPlanned', labelRu: 'Часы', required: true },
+    // Недели действия (§этап В): пусто — как раньше, нагрузка идёт равномерно.
+    { field: 'weekFrom', labelRu: 'С недели', required: false },
+    { field: 'hoursPerWeek', labelRu: 'Часов в неделю', required: false },
     // Годовая нагрузка держит оба полугодия в одной строке: с полугодием запись уходит в
     // семестр того же учебного года (§1.1 п.38), и файл загружается за один проход.
     { field: 'halfYear', labelRu: 'Полугодие (I/II)', required: false },

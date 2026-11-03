@@ -54,6 +54,11 @@ export const teachingLoad = sqliteTable(
     subgroupId: integer('subgroup_id').references(() => subgroup.id, { onDelete: 'restrict' }),
     lessonKind: text('lesson_kind').notNull().$type<'theory' | 'practice' | 'seminar' | 'lab'>(),
     hoursPlanned: integer('hours_planned').notNull(),
+    // Недели действия и ручная интенсивность (§этап В); всё nullable, пусто — прежнее поведение:
+    // нагрузка равномерно идёт по всему семестру, а у практики начало — неделя практики семестра.
+    weekFrom: integer('week_from'),
+    weekTo: integer('week_to'),
+    hoursPerWeek: integer('hours_per_week'),
     // Сколько академических часов идёт одно занятие, пары подряд (п. 48): у практики 2/4/6,
     // у прочих видов всегда 2 — проверяется в сервисе.
     sessionHours: integer('session_hours').notNull().default(2).$type<2 | 4 | 6>(),

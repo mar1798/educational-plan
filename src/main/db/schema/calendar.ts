@@ -19,6 +19,8 @@ export const semester = sqliteTable('semester', {
   startsOn: text('starts_on').notNull(),
   endsOn: text('ends_on').notNull(),
   weeksCount: integer('weeks_count').notNull().default(18),
+  // Неделя начала практики, одна для всех групп семестра; NULL — по умолчанию 4-я (§этап В).
+  practiceStartWeek: integer('practice_start_week'),
   status: text('status').notNull().default('planning').$type<'planning' | 'active' | 'closed'>(),
   ...auditColumns,
 })

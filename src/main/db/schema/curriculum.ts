@@ -6,6 +6,8 @@ import { speciality } from './org'
 export const discipline = sqliteTable('discipline', {
   id: id(),
   name: text('name').notNull(),
+  // Сокращение для ячейки сводного расписания («Неорг. хим.»); пусто — берётся name.
+  shortName: text('short_name'),
   indexCode: text('index_code'),
   block: integer('block').notNull().$type<1 | 2 | 3>(),
   cycle: text('cycle').notNull().$type<'spo1' | 'spo2' | 'spo3' | 'spo4' | 'spo5'>(),

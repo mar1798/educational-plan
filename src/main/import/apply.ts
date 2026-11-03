@@ -318,6 +318,13 @@ export function applyTeachingLoadRows(
       continue
     }
 
+    const weekFrom = cellNumber(row.weekFrom ?? null)
+    const hoursPerWeek = cellNumber(row.hoursPerWeek ?? null)
+    if ((weekFrom != null && !Number.isInteger(weekFrom)) || (hoursPerWeek != null && !Number.isInteger(hoursPerWeek))) {
+      skipped.push({ row, reason: '«С недели» и «Часов в неделю» должны быть целыми числами' })
+      continue
+    }
+
     const planSemesterNo = (g.course - 1) * 2 + target.no
     const plan = tx
       .select()
@@ -378,6 +385,8 @@ export function applyTeachingLoadRows(
           subgroupId: null,
           lessonKind,
           hoursPlanned,
+          weekFrom,
+          hoursPerWeek,
           // В файлах колледжа длительность нигде не указана (п. 48) — завуч правит после импорта.
           sessionHours: 2,
           requiresParallel: false,

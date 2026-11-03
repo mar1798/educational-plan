@@ -8,6 +8,7 @@ import { ReferencedError } from '../db/repo/reference-guard'
 import { LockedEntryError, ScheduleConflictError } from '../db/repo/schedule-template'
 import { StreamValidationError } from '../db/repo/stream'
 import { SubstitutionValidationError } from '../db/repo/substitution'
+import { LoadWeeksError } from '../../shared/load/weeks'
 import { LoadValidationError } from '../db/repo/teaching-load'
 import { err, ok, type Result } from '../../shared/result'
 import type { AppError } from '../../shared/result'
@@ -32,6 +33,7 @@ function toAppError(e: unknown): AppError {
   // не сбой программы: без своей ветки они уходили как INTERNAL_ERROR.
   if (
     e instanceof LoadValidationError ||
+    e instanceof LoadWeeksError ||
     e instanceof StreamValidationError ||
     e instanceof SubstitutionValidationError ||
     e instanceof SubgroupCoverageError

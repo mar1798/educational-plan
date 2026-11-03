@@ -7,6 +7,8 @@ export const speciality = sqliteTable('speciality', {
   name: text('name').notNull(),
   qualification: text('qualification'),
   semestersTotal: integer('semesters_total').notNull().default(6),
+  // Порядок колонок сводного расписания (§этап А): Ф, СД, ЛД, АД, СО, Л. NULL — в конец, по коду.
+  sortOrder: integer('sort_order'),
   archivedAt: text('archived_at'),
   ...auditColumns,
 })

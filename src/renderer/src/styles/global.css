@@ -1354,3 +1354,144 @@ table.data-table {
   font-size: 13px;
 }
 
+
+/* Сводная сетка «день × пара / группы» (§этап А). */
+
+.summary-scroll {
+  overflow: auto;
+  max-height: 78vh;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.summary-grid {
+  display: grid;
+  width: max-content;
+  min-width: 100%;
+}
+
+.summary-head,
+.summary-day,
+.summary-pair,
+.summary-cell {
+  border-right: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.summary-head {
+  padding: 6px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.summary-sticky-top {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.summary-sticky-left {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+
+.summary-sticky-left2 {
+  position: sticky;
+  left: 36px;
+  z-index: 1;
+}
+
+.summary-corner {
+  z-index: 3;
+}
+
+.summary-day {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.summary-day span {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+
+.summary-pair {
+  padding: 4px;
+  font-size: 11px;
+  text-align: center;
+  white-space: pre-line;
+  color: var(--color-text-muted);
+}
+
+.summary-cell {
+  min-height: 52px;
+  padding: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.summary-chip {
+  position: relative;
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-accent);
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: 11px;
+  cursor: grab;
+  overflow-wrap: anywhere;
+}
+
+.summary-chip-top {
+  font-weight: 600;
+  padding-right: 12px;
+}
+
+.summary-chip-bottom {
+  color: var(--color-text-muted);
+}
+
+.summary-chip-flag {
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.summary-chip-lock {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0;
+  line-height: 1;
+}
+
+/* Полоса недель нагрузки (§этап В). */
+.weeks-strip {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.weeks-strip span {
+  width: 6px;
+  height: 12px;
+  background: var(--color-border);
+}
+
+.weeks-strip span.weeks-strip-on {
+  background: var(--color-accent);
+}
+
+.weeks-strip small {
+  margin-left: 6px;
+  color: var(--color-text-muted);
+}

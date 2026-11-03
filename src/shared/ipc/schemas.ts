@@ -10,7 +10,12 @@ export const generationStartInput = z.object({
   templateId: z.number().int().positive(),
   seed: z.number().int().optional(),
   timeBudgetMs: z.number().int().positive().optional(),
+  weekFrom: z.number().int().min(1).optional(),
+  weekTo: z.number().int().min(1).optional(),
+  previousJobId: z.string().optional(),
 })
+export const generationPhasesInput = z.object({ templateId: z.number().int().positive() })
+export const generationApplyPhasesInput = z.object({ jobIds: z.array(z.string()).min(1) })
 export const generationCancelInput = z.object({ jobId: z.string(), keepResult: z.boolean().optional() })
 export const generationApplyInput = z.object({ jobId: z.string() })
 
@@ -56,6 +61,7 @@ export const specialitySaveInput = withOptimisticId
     name: z.string().min(1, 'Укажите название'),
     qualification: z.string().nullable(),
     semestersTotal: z.number().int().min(1, 'Минимум 1 семестр').max(12, 'Максимум 12 семестров'),
+    sortOrder: z.number().int().min(0).nullable().optional(),
   })
   .superRefine(requireRowVersionOnUpdate)
 
@@ -120,6 +126,7 @@ export const disciplinesListInput = z.object({ includeArchived: z.boolean().opti
 export const disciplineSaveInput = withOptimisticId
   .extend({
     name: z.string().min(1, 'Укажите название дисциплины'),
+    shortName: z.string().nullable().optional(),
     indexCode: z.string().nullable(),
     block: z.union([z.literal(1), z.literal(2), z.literal(3)]),
     cycle: z.enum(['spo1', 'spo2', 'spo3', 'spo4', 'spo5']),
@@ -282,10 +289,13 @@ export const semesterSaveInput = withOptimisticId
     startsOn: z.string().min(1, 'Укажите дату начала'),
     endsOn: z.string().min(1, 'Укажите дату окончания'),
     weeksCount: z.number().int().positive('Укажите число недель'),
+    practiceStartWeek: z.number().int().min(1, 'Минимум 1-я неделя').nullable().optional(),
     status: z.enum(['planning', 'active', 'closed']),
   })
   .superRefine(requireRowVersionOnUpdate)
   .superRefine(requireOrderedRange)
+
+export const semesterStudyWeeksInput = z.object({ semesterId: z.number().int().positive() })
 
 export const semesterDeleteInput = z.object({ id: z.number().int().positive() })
 
@@ -512,6 +522,9 @@ export const teachingLoadSaveInput = withOptimisticId
     subgroupId: z.number().int().positive().nullable(),
     lessonKind: z.enum(['theory', 'practice', 'seminar', 'lab']),
     hoursPlanned: z.number().int().positive('Укажите часы'),
+    weekFrom: z.number().int().min(1, 'Неделя начинается с 1').nullable().optional(),
+    weekTo: z.number().int().min(1, 'Неделя начинается с 1').nullable().optional(),
+    hoursPerWeek: z.number().int().positive('Часов в неделю должно быть больше нуля').nullable().optional(),
     sessionHours: z.union([z.literal(2), z.literal(4), z.literal(6)], { message: 'Длительность занятия — 2, 4 или 6 часов' }),
     requiresParallel: z.boolean(),
     roomTypeRequired: roomType.nullable(),
@@ -520,6 +533,28 @@ export const teachingLoadSaveInput = withOptimisticId
     validFrom: isoDate('Укажите дату начала действия'),
   })
   .superRefine(requireRowVersionOnUpdate)
+
+const lectureCoverageDraft = z.object({
+  id: z.number().int().positive().optional(),
+  curriculumRowId: z.number().int().positive(),
+  groupId: z.number().int().positive().nullable(),
+  streamId: z.number().int().positive().nullable(),
+  subgroupId: z.number().int().positive().nullable().optional(),
+  lessonKind: z.enum(['theory', 'practice', 'seminar', 'lab']),
+  hoursPlanned: z.number().int().positive(),
+  weekFrom: z.number().int().min(1).nullable().optional(),
+  weekTo: z.number().int().min(1).nullable().optional(),
+  hoursPerWeek: z.number().int().positive().nullable().optional(),
+})
+
+export const lectureCoverageInput = z.object({
+  semesterId: z.number().int().positive(),
+  groupId: z.number().int().positive().nullable().optional(),
+  streamId: z.number().int().positive().nullable().optional(),
+  draft: lectureCoverageDraft.optional(),
+})
+
+export const suggestLectureHoursInput = z.object({ semesterId: z.number().int().positive(), draft: lectureCoverageDraft })
 
 export const teachingLoadDeleteInput = z.object({ id: z.number().int().positive() })
 
@@ -577,6 +612,7 @@ export const scheduleTemplateActivateInput = z.object({ id: z.number().int().pos
 export const scheduleTemplateArchiveInput = z.object({ id: z.number().int().positive(), rowVersion: z.number().int().positive() })
 export const scheduleTemplateDeleteInput = z.object({ id: z.number().int().positive(), rowVersion: z.number().int().positive() })
 export const scheduleTemplateEntriesInput = z.object({ templateId: z.number().int().positive() })
+export const summaryGroupsInput = z.object({})
 export const scheduleTemplateUnassignedLoadInput = z.object({ templateId: z.number().int().positive() })
 
 export const placeEntryInput = z.object({
@@ -654,6 +690,16 @@ export const importApplyInput = z.object({
   validFrom: z.string().min(1, 'Укажите дату начала действия'),
 })
 
+export const importGridInput = z.object({
+  filePath: z.string().min(1),
+  sheetName: z.string().min(1),
+  semesterId: z.number().int().positive('Выберите семестр'),
+  /** Сокращение из файла → id дисциплины; сохраняется в справочник при загрузке. */
+  bindings: z.record(z.string(), z.number().int().positive()).optional(),
+  /** 1-based строка шапки, если автоопределение ошиблось. */
+  headerRow: z.number().int().min(1).optional(),
+})
+
 export const importPreflightInput = z.object({
   rows: z.array(z.record(z.string(), cellValue)),
   semesterId: z.number().int().positive('Выберите семестр'),
@@ -667,6 +713,8 @@ export const exportExcelInput = z.object({
   kind: z.enum(['group', 'teacher', 'summary']),
   targetId: z.number().int().positive().optional(),
 })
+
+export const exportCollegeScheduleInput = z.object({ templateId: z.number().int().positive() })
 
 export const exportPdfInput = z.object({
   templateId: z.number().int().positive(),

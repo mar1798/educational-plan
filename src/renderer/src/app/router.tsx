@@ -11,6 +11,7 @@ import { CurriculumEditorPage } from '../features/curriculum/CurriculumEditorPag
 import { DisciplinesPage } from '../features/disciplines/DisciplinesPage'
 import { GenerationPage } from '../features/generation/GenerationPage'
 import { GroupsPage } from '../features/groups/GroupsPage'
+import { GridImportPage } from '../features/import/GridImportPage'
 import { ImportWizardPage } from '../features/import/ImportWizardPage'
 import { LoadBalancePage } from '../features/load/LoadBalancePage'
 import { LoadEditorPage } from '../features/load/LoadEditorPage'
@@ -57,6 +58,7 @@ export const router = createHashRouter([
       { path: 'streams', element: <StreamsPage /> },
       { path: 'load-balance', element: <LoadBalancePage /> },
       { path: 'import', element: <ImportWizardPage /> },
+      { path: 'import-grid', element: <GridImportPage /> },
       { path: 'schedule-template', element: <ScheduleTemplatePage /> },
       { path: 'schedule-conflicts', element: <ConflictsPage /> },
       { path: 'substitutions', element: <SubstitutionWizardPage /> },

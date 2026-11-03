@@ -1,4 +1,5 @@
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm'
+import { hoursInWeek, resolveLoadWeeks, type LoadWeeksInput, type SemesterWeeksContext } from '../../../shared/load/weeks'
 import { curriculum, curriculumRow } from '../schema/curriculum'
 import { stream, streamMember, teachingLoad } from '../schema/load'
 import { divisionScheme, studyGroup, subgroup, teacher, teacherQualification } from '../schema/people'
@@ -28,24 +29,11 @@ export function isTeacherQualified(tx: DbLike, teacherId: number, disciplineId: 
 }
 
 /**
- * Суммарные аудиторные часы группы в семестре (§1.1 п.20, §3.7a): свои строки нагрузки
- * плюс часы потоков, в которых группа участвует, — поток не хранит нагрузку у каждой
- * группы отдельно, поэтому его часы прибавляются через членство.
+ * Действующие строки нагрузки группы в семестре (§1.1 п.20, §3.7a): свои строки плюс строки
+ * потоков, в которых группа участвует, — поток не хранит нагрузку у каждой группы отдельно,
+ * поэтому его часы прибавляются через членство.
  */
-export function activeGroupTeachingHours(tx: DbLike, groupId: number, semesterId: number, excludeLoadId?: number): number {
-  const direct = tx
-    .select({ n: sql<number>`coalesce(sum(${teachingLoad.hoursPlanned}), 0)` })
-    .from(teachingLoad)
-    .where(
-      and(
-        eq(teachingLoad.groupId, groupId),
-        eq(teachingLoad.semesterId, semesterId),
-        isNull(teachingLoad.validTo),
-        excludeLoadId != null ? sql`${teachingLoad.id} != ${excludeLoadId}` : sql`1=1`,
-      ),
-    )
-    .get() as { n: number }
-
+export function activeGroupLoads(tx: DbLike, groupId: number, semesterId: number, excludeLoadId?: number): (typeof teachingLoad.$inferSelect)[] {
   const memberStreamIds = tx
     .select({ id: streamMember.streamId })
     .from(streamMember)
@@ -53,22 +41,37 @@ export function activeGroupTeachingHours(tx: DbLike, groupId: number, semesterId
     .all()
     .map((r) => r.id)
 
-  if (memberStreamIds.length === 0) return direct.n
-
-  const viaStreams = tx
-    .select({ n: sql<number>`coalesce(sum(${teachingLoad.hoursPlanned}), 0)` })
+  const target = memberStreamIds.length > 0 ? or(eq(teachingLoad.groupId, groupId), inArray(teachingLoad.streamId, memberStreamIds)) : eq(teachingLoad.groupId, groupId)
+  return tx
+    .select()
     .from(teachingLoad)
-    .where(
-      and(
-        inArray(teachingLoad.streamId, memberStreamIds),
-        eq(teachingLoad.semesterId, semesterId),
-        isNull(teachingLoad.validTo),
-        excludeLoadId != null ? sql`${teachingLoad.id} != ${excludeLoadId}` : sql`1=1`,
-      ),
-    )
-    .get() as { n: number }
+    .where(and(target, eq(teachingLoad.semesterId, semesterId), isNull(teachingLoad.validTo), excludeLoadId != null ? sql`${teachingLoad.id} != ${excludeLoadId}` : sql`1=1`))
+    .all()
+}
 
-  return direct.n + viaStreams.n
+/** Суммарные аудиторные часы группы в семестре (§1.1 п.20, §3.7a). */
+export function activeGroupTeachingHours(tx: DbLike, groupId: number, semesterId: number, excludeLoadId?: number): number {
+  return activeGroupLoads(tx, groupId, semesterId, excludeLoadId).reduce((sum, l) => sum + l.hoursPlanned, 0)
+}
+
+type SemesterRow = typeof semester.$inferSelect
+
+export function weeksContextOf(sem: SemesterRow): SemesterWeeksContext {
+  return { weeksCount: sem.weeksCount, practiceStartWeek: sem.practiceStartWeek }
+}
+
+/**
+ * Часы группы по учебным неделям семестра (индекс 0 — первая неделя). Нужны для недельного
+ * лимита (п. 20): в фазе, где лекции и практика идут вместе, нагрузка выше средней за семестр,
+ * и проверка по сумме часов этого не увидела бы.
+ */
+export function groupHoursByWeek(loads: LoadWeeksInput[], ctx: SemesterWeeksContext): number[] {
+  const weeks = new Array<number>(ctx.weeksCount).fill(0)
+  for (const l of loads) {
+    const resolved = resolveLoadWeeks(l, ctx)
+    for (let w = resolved.weekFrom; w <= resolved.weekTo; w++) weeks[w - 1]! += hoursInWeek(l, resolved, w)
+  }
+  return weeks
 }
 
 export interface TeachingLoadInput {
@@ -81,6 +84,10 @@ export interface TeachingLoadInput {
   subgroupId: number | null
   lessonKind: 'theory' | 'practice' | 'seminar' | 'lab'
   hoursPlanned: number
+  // Необязательны: вызовы без недель (импорт, сид) означают «как раньше».
+  weekFrom?: number | null
+  weekTo?: number | null
+  hoursPerWeek?: number | null
   sessionHours: 2 | 4 | 6
   requiresParallel: boolean
   roomTypeRequired: string | null
@@ -141,15 +148,26 @@ export function saveTeachingLoad(
     )
   }
 
-  if (input.groupId != null) {
-    const group = targetGroups[0]!
-    const already = activeGroupTeachingHours(tx, input.groupId, input.semesterId, existing?.id)
-    const total = already + input.hoursPlanned
-    const limit = group.maxHoursPerWeek * sem.weeksCount
-    if (total > limit) {
-      throw new LoadValidationError(
-        `Группа «${group.name}» выйдет за недельный лимит ${group.maxHoursPerWeek} ч (за семестр это ${limit} ч): будет ${total} ч`,
-      )
+  // Недели действия: ошибка ввода (за пределами семестра, начало позже конца) — до записи.
+  const weeksCtx = weeksContextOf(sem)
+  resolveLoadWeeks(input, weeksCtx)
+
+  // Недельный лимит (п. 20) проверяется по каждой неделе отдельно: у группы с лекциями и практикой
+  // в одной фазе нагрузка выше средней, и сумма за семестр этого не показывает.
+  for (const group of targetGroups) {
+    const all = [...activeGroupLoads(tx, group.id, input.semesterId, existing?.id), input].filter((l) => {
+      try {
+        resolveLoadWeeks(l, weeksCtx)
+        return true
+      } catch {
+        return false // уже сохранённая строка с устаревшими неделями не должна блокировать правку другой
+      }
+    })
+    const byWeek = groupHoursByWeek(all, weeksCtx)
+    const peak = Math.max(...byWeek)
+    if (peak > group.maxHoursPerWeek) {
+      const week = byWeek.indexOf(peak) + 1
+      throw new LoadValidationError(`Группа «${group.name}» выйдет за недельный лимит ${group.maxHoursPerWeek} ч: в неделе ${week} будет ${Math.round(peak * 10) / 10} ч`)
     }
   }
 

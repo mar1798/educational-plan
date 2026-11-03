@@ -39,7 +39,10 @@ export const navSections: NavSection[] = [
   },
   {
     title: 'Импорт',
-    items: [{ label: 'Импорт из Excel', path: '/import' }],
+    items: [
+      { label: 'Импорт из Excel', path: '/import' },
+      { label: 'Загрузка расписания', path: '/import-grid' },
+    ],
   },
   {
     title: 'Расписание',

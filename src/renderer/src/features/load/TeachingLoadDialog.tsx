@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { CurriculumRow, Discipline, DivisionSchemeWithSubgroups, StudyGroup, StreamWithMembers, Teacher, TeachingLoad } from '../../../../shared/ipc/contract'
+import type { LectureCoverageItem, CurriculumRow, Discipline, DivisionSchemeWithSubgroups, Semester, StudyGroup, StreamWithMembers, Teacher, TeachingLoad } from '../../../../shared/ipc/contract'
+import { describeLoadWeeks, LoadWeeksError, resolveLoadWeeks } from '../../../../shared/load/weeks'
 import { api } from '../../api/client'
 import { Dialog } from '../../ui/Dialog'
 import { ROOM_TYPE_LABEL, ruCommon } from '../../ui/locale'
@@ -61,6 +62,11 @@ export function TeachingLoadDialog({
   const [teacherId, setTeacherId] = useState<number | ''>(row?.teacherId ?? '')
   const [lessonKind, setLessonKind] = useState<TeachingLoad['lessonKind']>(row?.lessonKind ?? 'theory')
   const [hoursPlanned, setHoursPlanned] = useState(row?.hoursPlanned ?? 0)
+  // Недели действия (§этап В): пустое поле — «по умолчанию», подсказка ниже показывает, что из этого выйдет.
+  const [weekFrom, setWeekFrom] = useState(row?.weekFrom != null ? String(row.weekFrom) : '')
+  const [weekTo, setWeekTo] = useState(row?.weekTo != null ? String(row.weekTo) : '')
+  const [hoursPerWeek, setHoursPerWeek] = useState(row?.hoursPerWeek != null ? String(row.hoursPerWeek) : '')
+  const [semester, setSemester] = useState<Semester | null>(null)
   const [sessionHours, setSessionHours] = useState<TeachingLoad['sessionHours']>(row?.sessionHours ?? 2)
   const [requiresParallel, setRequiresParallel] = useState(row?.requiresParallel ?? false)
   const [clinicalModeOverride, setClinicalModeOverride] = useState<TeachingLoad['clinicalModeOverride']>(row?.clinicalModeOverride ?? null)
@@ -71,6 +77,10 @@ export function TeachingLoadDialog({
   const [creatingStream, setCreatingStream] = useState(false)
   const [planRows, setPlanRows] = useState<CurriculumRow[]>([])
   const [planRowsKey, setPlanRowsKey] = useState('')
+
+  useEffect(() => {
+    void api.invoke('semesters:list', {}).then((res) => res.ok && setSemester(res.value.find((x) => x.id === semesterId) ?? null))
+  }, [semesterId])
 
   useEffect(() => {
     void api.invoke('streams:listForSemester', { semesterId }).then((res) => (res.ok ? setStreams(res.value) : notifyError(res.error.message)))
@@ -133,7 +143,56 @@ export function TeachingLoadDialog({
     !(Number.isInteger(hoursPlanned) && hoursPlanned > 0) && 'часы (целое число больше нуля)',
     validFrom === '' && 'дату «Действует с»',
   )
-  const isValid = missing.length === 0
+  const toWeek = (raw: string): number | null => (raw.trim() === '' ? null : Number(raw))
+  const weeksPreview = (() => {
+    if (!semester || !(hoursPlanned > 0)) return null
+    try {
+      const input = { lessonKind, hoursPlanned, weekFrom: toWeek(weekFrom), weekTo: toWeek(weekTo), hoursPerWeek: toWeek(hoursPerWeek) }
+      const resolved = resolveLoadWeeks(input, semester)
+      return { text: describeLoadWeeks(input, resolved), warnings: resolved.warnings, error: null }
+    } catch (e) {
+      if (e instanceof LoadWeeksError) return { text: '', warnings: [], error: e.message }
+      throw e
+    }
+  })()
+  const isValid = missing.length === 0 && weeksPreview?.error == null
+
+  // Правило «практика после 80 % лекций» (§этап Г): считает main, здесь только показ. Это предупреждение — сохранить можно.
+  const coverageDraft =
+    curriculumRowId !== '' && (targetType === 'group' ? groupId !== '' : streamId !== '') && hoursPlanned > 0 && weeksPreview?.error == null
+      ? {
+          id: row?.id,
+          curriculumRowId,
+          groupId: targetType === 'group' ? (groupId as number) : null,
+          streamId: targetType === 'stream' ? (streamId as number) : null,
+          lessonKind,
+          hoursPlanned,
+          weekFrom: toWeek(weekFrom),
+          weekTo: toWeek(weekTo),
+          hoursPerWeek: toWeek(hoursPerWeek),
+        }
+      : null
+  const coverageKey = coverageDraft ? JSON.stringify(coverageDraft) : ''
+  const [coverage, setCoverage] = useState<{ key: string; item: LectureCoverageItem | null }>({ key: '', item: null })
+  const [suggestion, setSuggestion] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (coverageKey === '') return
+    const draft = JSON.parse(coverageKey) as NonNullable<typeof coverageDraft>
+    void api.invoke('load:lectureCoverage', { semesterId, groupId: draft.groupId, streamId: draft.streamId, draft }).then((res) => {
+      if (!res.ok) return
+      setCoverage({ key: coverageKey, item: res.value.find((i) => i.curriculumRowId === draft.curriculumRowId) ?? null })
+    })
+  }, [semesterId, coverageKey])
+  const coverageItem = coverage.key === coverageKey ? coverage.item : null
+
+  async function suggestHours() {
+    if (!coverageDraft) return
+    const res = await api.invoke('load:suggestLectureHours', { semesterId, draft: coverageDraft })
+    if (!res.ok) return notifyError(res.error.message)
+    setSuggestion(res.value.message)
+    if (res.value.hoursPerWeek != null) setHoursPerWeek(String(res.value.hoursPerWeek))
+  }
 
   async function submit() {
     setLoading(true)
@@ -150,6 +209,9 @@ export function TeachingLoadDialog({
       subgroupId: subgroupId ?? null,
       lessonKind,
       hoursPlanned,
+      weekFrom: toWeek(weekFrom),
+      weekTo: toWeek(weekTo),
+      hoursPerWeek: toWeek(hoursPerWeek),
       // Выбор длительности виден только у практики; если вид сменили, прежний выбор не отправляем.
       sessionHours: lessonKind === 'practice' ? sessionHours : 2,
       requiresParallel,
@@ -298,6 +360,33 @@ export function TeachingLoadDialog({
           </Select>
         </div>
       )}
+
+      <div className="form-field">
+        <label htmlFor="load-week-from">С недели</label>
+        <input id="load-week-from" type="number" min={1} placeholder={lessonKind === 'practice' ? 'как у практики семестра' : '1'} value={weekFrom} onChange={(e) => setWeekFrom(e.target.value)} />
+      </div>
+      <div className="form-field">
+        <label htmlFor="load-week-to">По неделю</label>
+        <input id="load-week-to" type="number" min={1} placeholder="считается" value={weekTo} onChange={(e) => setWeekTo(e.target.value)} />
+      </div>
+      <div className="form-field">
+        <label htmlFor="load-hours-per-week">Часов в неделю</label>
+        <input id="load-hours-per-week" type="number" min={1} placeholder="равномерно" value={hoursPerWeek} onChange={(e) => setHoursPerWeek(e.target.value)} />
+        {weeksPreview?.text && <p className="form-hint">{weeksPreview.text}</p>}
+        {weeksPreview?.warnings.map((w) => (
+          <p key={w} className="form-hint">
+            {w}
+          </p>
+        ))}
+        {weeksPreview?.error && <p className="form-error">{weeksPreview.error}</p>}
+        {coverageItem != null && !coverageItem.ok && <p className="form-error">{coverageItem.message}</p>}
+        {lessonKind === 'theory' && (
+          <button type="button" className="btn-link" disabled={coverageDraft == null} onClick={() => void suggestHours()}>
+            Подобрать часы лекций
+          </button>
+        )}
+        {suggestion && <p className="form-hint">{suggestion}</p>}
+      </div>
 
       <div className="form-field form-field-checkbox">
         <input id="load-parallel" type="checkbox" checked={requiresParallel} onChange={(e) => setRequiresParallel(e.target.checked)} />

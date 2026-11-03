@@ -77,6 +77,7 @@ function SemesterFields({ control, years }: { control: Control<SemesterFormValue
       <DateField control={control} name="startsOn" label="Начало" />
       <DateField control={control} name="endsOn" label="Окончание" />
       <NumberField control={control} name="weeksCount" label="Число недель" min={1} />
+      <NumberField control={control} name="practiceStartWeek" label="Практика с недели (пусто — 4-я)" nullable min={1} />
       <SelectField
         control={control}
         name="status"
@@ -98,6 +99,20 @@ export function SemestersPage() {
     })
   }, [])
 
+  // Предупреждение §этапа В: календарь должен давать столько учебных недель, сколько записано в семестре.
+  const [weekWarnings, setWeekWarnings] = useState<string[]>([])
+  useEffect(() => {
+    void api.invoke('semesters:list', {}).then(async (res) => {
+      if (!res.ok) return
+      const found: string[] = []
+      for (const sem of res.value.filter((x) => x.status !== 'closed')) {
+        const w = await api.invoke('semesters:studyWeeks', { semesterId: sem.id })
+        if (w.ok && w.value.warning) found.push(`${sem.startsOn} – ${sem.endsOn}: ${w.value.warning}`)
+      }
+      setWeekWarnings(found)
+    })
+  }, [])
+
   const yearNameById = new Map(years.map((y) => [y.id, y.name]))
   const defaultValues: SemesterFormValues = {
     academicYearId: years[0]?.id ?? 0,
@@ -105,10 +120,17 @@ export function SemestersPage() {
     startsOn: todayIso(),
     endsOn: todayIso(),
     weeksCount: 18,
+    practiceStartWeek: null,
     status: 'planning',
   }
 
   return (
+    <>
+    {weekWarnings.map((w) => (
+      <p key={w} className="form-error">
+        {w}
+      </p>
+    ))}
     <ReferenceCrudPage<Semester, SemesterFormValues>
       entityName="semester"
       titleRu="Полугодия"
@@ -123,6 +145,7 @@ export function SemestersPage() {
         startsOn: row.startsOn,
         endsOn: row.endsOn,
         weeksCount: row.weeksCount,
+        practiceStartWeek: row.practiceStartWeek,
         status: row.status,
       })}
       renderFields={(control) => <SemesterFields control={control} years={years} />}
@@ -131,5 +154,6 @@ export function SemestersPage() {
       actions={actions}
       initialSorting={[{ id: 'startsOn', desc: true }]}
     />
+    </>
   )
 }

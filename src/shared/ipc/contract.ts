@@ -41,6 +41,7 @@ export interface Speciality {
   name: string
   qualification: string | null
   semestersTotal: number
+  sortOrder: number | null
   archivedAt: string | null
   rowVersion: number
 }
@@ -77,6 +78,7 @@ export interface Room {
 export interface Discipline {
   id: number
   name: string
+  shortName: string | null
   indexCode: string | null
   block: 1 | 2 | 3
   cycle: 'spo1' | 'spo2' | 'spo3' | 'spo4' | 'spo5'
@@ -177,6 +179,8 @@ export interface Semester {
   startsOn: string
   endsOn: string
   weeksCount: number
+  /** Неделя начала практики для всех групп семестра; null — 4-я. */
+  practiceStartWeek: number | null
   status: 'planning' | 'active' | 'closed'
   rowVersion: number
 }
@@ -318,6 +322,10 @@ export interface TeachingLoad {
   subgroupId: number | null
   lessonKind: 'theory' | 'practice' | 'seminar' | 'lab'
   hoursPlanned: number
+  /** Недели действия и ручная интенсивность (§этап В); null — по умолчанию. */
+  weekFrom: number | null
+  weekTo: number | null
+  hoursPerWeek: number | null
   sessionHours: 2 | 4 | 6
   requiresParallel: boolean
   pairedLoadId: number | null
@@ -329,6 +337,44 @@ export interface TeachingLoad {
   validTo: string | null
   note: string | null
   rowVersion: number
+}
+
+/** Строка нагрузки как её видит диалог до сохранения: подменяет сохранённую (id) или добавляется к ним. */
+export interface LectureCoverageDraft {
+  id?: number
+  curriculumRowId: number
+  groupId: number | null
+  streamId: number | null
+  subgroupId?: number | null
+  lessonKind: TeachingLoad['lessonKind']
+  hoursPlanned: number
+  weekFrom?: number | null
+  weekTo?: number | null
+  hoursPerWeek?: number | null
+}
+
+/** Сколько лекций пройдено к началу практики по паре «группа/поток × строка плана» (§этап Г). */
+export interface LectureCoverageItem {
+  groupId: number | null
+  streamId: number | null
+  curriculumRowId: number
+  targetLabel: string
+  disciplineName: string
+  practiceFromWeek: number
+  coveredHours: number
+  totalHours: number
+  percent: number
+  threshold: number
+  ok: boolean
+  message: string
+}
+
+export interface LectureHoursSuggestion {
+  hoursPerWeek: number | null
+  /** false — подобранное значение упирается в недельный лимит группы или лекциям нет недель до практики. */
+  fits: boolean
+  shortfall: number
+  message: string
 }
 
 export interface TeachingLoadSaveResult {
@@ -429,11 +475,43 @@ export interface TemplateEntryView {
   teachingLoadId: number
   disciplineId: number
   disciplineName: string
+  /** Сокращение для сводного расписания; если не задано — полное название. */
+  disciplineShortName: string
+  /** Клиническое деление: в ячейке пишется номером подгруппы без «/». */
+  isClinicalSubgroup: boolean
+  /** Сторона неклинического занятия подгруппы относительно «/»; null — вся группа или поток. */
+  subgroupSide: 'left' | 'right' | 'third' | null
   lessonKind: 'theory' | 'practice' | 'seminar' | 'lab'
   academicHours: number
   targetLabel: string
   attendees: TemplateEntryAttendee[]
   rowVersion: number
+}
+
+/** Колонка сводного расписания: порядок уже расставлен main'ом (курс → специальность → бюджет → номер). */
+export interface SummaryGroupColumn {
+  id: number
+  name: string
+  course: number
+  specialityId: number
+  specialityCode: string
+  specialityName: string
+  funding: 'budget' | 'contract'
+}
+
+export interface SemesterPhaseView {
+  no: number
+  weekFrom: number
+  weekTo: number
+  effectiveFrom: string
+  loads: { loadId: number; label: string }[]
+  startedBy: string[]
+  short: boolean
+}
+
+export interface SemesterPhasesView {
+  phases: SemesterPhaseView[]
+  problems: string[]
 }
 
 export interface UnassignedLoadRow {
@@ -642,11 +720,17 @@ export interface IpcContract {
 
   // Генерация расписания солвером (§3.5, §5.6-5.9): результат — черновик в памяти main,
   // применяется отдельным вызовом 'generation:apply' (не пишется в БД сразу).
-  'generation:start': { in: { templateId: number; seed?: number; timeBudgetMs?: number }; out: { jobId: string } }
+  // Фазы семестра (§этап Д): границы по неделям действия нагрузки, у каждой фазы своя версия шаблона.
+  'generation:phases': { in: { templateId: number }; out: SemesterPhasesView }
+  // weekFrom/weekTo — генерация одной фазы; previousJobId — результат предыдущей фазы, чьи слоты
+  // становятся предпочтительными (вес phaseStability).
+  'generation:start': { in: { templateId: number; seed?: number; timeBudgetMs?: number; weekFrom?: number; weekTo?: number; previousJobId?: string }; out: { jobId: string } }
   // keepResult: остановить расчёт, но забрать лучшее найденное решение — оно придёт
   // обычным 'generation:done'. Без флага результат отменённого прогона выбрасывается.
   'generation:cancel': { in: { jobId: string; keepResult?: boolean }; out: { ok: true } }
   'generation:apply': { in: { jobId: string }; out: { operationId: number; created: number } }
+  // Все фазы одной операцией: откат одним действием убирает все созданные версии.
+  'generation:applyPhases': { in: { jobIds: string[] }; out: { operationId: number; created: number; templateIds: number[] } }
 
   // Операции и аудит (§1.5, §2.10, §3.2) — ядро данных этапа 1, UI появится в этапе 2.
   'operations:list': { in: { kind?: OperationSummary['kind'] }; out: OperationSummary[] }
@@ -725,6 +809,8 @@ export interface IpcContract {
 
   'semesters:list': { in: { academicYearId?: number }; out: Semester[] }
   'semesters:save': { in: SemesterSaveInput; out: Semester }
+  // Учебные недели по календарю (§этап В): номер → понедельник; warning — если их не столько, сколько в настройках семестра.
+  'semesters:studyWeeks': { in: { semesterId: number }; out: { weeks: { no: number; monday: string }[]; warning: string | null } }
   'semesters:delete': { in: { id: number }; out: { ok: true } }
 
   // Схемы деления на подгруппы (§2.5).
@@ -811,6 +897,9 @@ export interface IpcContract {
   'otherLoad:delete': { in: { id: number }; out: { ok: true } }
 
   // Баланс нагрузки (§3.7): «сколько ещё не роздано» / «сколько набрано».
+  // Правило «практика после 80 % лекций» (§этап Г): предупреждение, не запрет.
+  'load:lectureCoverage': { in: { semesterId: number; groupId?: number | null; streamId?: number | null; draft?: LectureCoverageDraft }; out: LectureCoverageItem[] }
+  'load:suggestLectureHours': { in: { semesterId: number; draft: LectureCoverageDraft }; out: LectureHoursSuggestion }
   'loadBalance:byGroup': { in: { semesterId: number }; out: GroupBalanceRow[] }
   'loadBalance:byTeacher': { in: { semesterId: number }; out: TeacherBalanceRow[] }
 
@@ -822,6 +911,7 @@ export interface IpcContract {
   // Удаление версии целиком (§4.1): доступно, пока с версии ничего не раскатано.
   'scheduleTemplates:delete': { in: { id: number; rowVersion: number }; out: { operationId: number } }
   'scheduleTemplates:entries': { in: { templateId: number }; out: TemplateEntryView[] }
+  'scheduleTemplates:summaryGroups': { in: Record<string, never>; out: SummaryGroupColumn[] }
   'scheduleTemplates:unassignedLoad': { in: { templateId: number }; out: UnassignedLoadRow[] }
   'scheduleTemplates:placeEntry': { in: PlaceEntryInput; out: TemplateEntryView }
   'scheduleTemplates:moveEntry': { in: MoveEntryInput; out: TemplateEntryView }
@@ -842,6 +932,9 @@ export interface IpcContract {
   'import:apply': { in: ImportApplyInput; out: ImportApplyResult }
   // Проверка справочников под нагрузку из файла и заведение недостающего — отдельная
   // операция 'import', откатывается независимо от самого импорта.
+  // Загрузка готового расписания из сетки колледжа (§этап Ж): отдельный путь, сетка списком не является.
+  'import:gridPreview': { in: ImportGridInput; out: GridImportPlanView }
+  'import:gridApply': { in: ImportGridInput; out: GridImportApplyResult }
   'import:preflight': { in: ImportPreflightInput; out: ImportMissingReport }
   'import:createMissing': { in: ImportPreflightInput; out: ImportCreateMissingResult }
 
@@ -850,6 +943,8 @@ export interface IpcContract {
 
   // Экспорт расписания (§5.10-5.11): пользователь сам выбирает файл через showSaveDialog.
   'export:excel': { in: { templateId: number; kind: 'group' | 'teacher' | 'summary'; targetId?: number }; out: { path: string } | { cancelled: true } }
+  // Сводное расписание в формате колледжа (§этап Б): день × пара слева, группы сверху, печать из Excel.
+  'export:collegeScheduleExcel': { in: { templateId: number }; out: { path: string } | { cancelled: true } }
   // groupId отсутствует → печать сводного расписания (по листу/странице на группу, §этап 7).
   'export:pdf': { in: { templateId: number; groupId?: number }; out: { path: string } | { cancelled: true } }
 
@@ -1000,6 +1095,7 @@ export interface SemesterSaveInput {
   startsOn: string
   endsOn: string
   weeksCount: number
+  practiceStartWeek?: number | null
   status: Semester['status']
 }
 
@@ -1082,6 +1178,9 @@ export interface TeachingLoadSaveInput {
   subgroupId: number | null
   lessonKind: TeachingLoad['lessonKind']
   hoursPlanned: number
+  weekFrom?: number | null
+  weekTo?: number | null
+  hoursPerWeek?: number | null
   sessionHours: TeachingLoad['sessionHours']
   requiresParallel: boolean
   roomTypeRequired: Room['roomType'] | null
@@ -1137,6 +1236,29 @@ export interface RolloutRangeInput {
   templateId: number
   dateFrom: string
   dateTo: string
+}
+
+export interface ImportGridInput {
+  filePath: string
+  sheetName: string
+  semesterId: number
+  bindings?: Record<string, number>
+  headerRow?: number
+}
+
+export interface GridImportPlanView {
+  layout: { headerRow: number; unknownHeaders: string[]; groups: string[]; cellsCount: number }
+  entries: { dayOfWeek: number; pairNo: number; teachingLoadId: number; label: string }[]
+  problems: { row: number; groupName: string; text: string; reason: string }[]
+  unknownAbbreviations: { abbr: string; count: number; suggestions: { id: number; name: string }[] }[]
+  conflicts: string[]
+}
+
+export interface GridImportApplyResult {
+  operationId: number
+  templateId: number
+  created: number
+  plan: GridImportPlanView
 }
 
 export interface ImportProfileSaveInput {

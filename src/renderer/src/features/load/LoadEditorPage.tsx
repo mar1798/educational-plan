@@ -1,6 +1,7 @@
 import type { ColumnDef } from '@tanstack/react-table'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { CurriculumRow, Discipline, StudyGroup, Teacher, TeachingLoad } from '../../../../shared/ipc/contract'
+import type { CurriculumRow, Discipline, Semester, StudyGroup, Teacher, TeachingLoad } from '../../../../shared/ipc/contract'
+import { describeLoadWeeks, resolveLoadWeeks } from '../../../../shared/load/weeks'
 import { api } from '../../api/client'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { DataTable } from '../../ui/DataTable'
@@ -16,6 +17,34 @@ const KIND_LABEL: Record<TeachingLoad['lessonKind'], string> = {
   practice: 'Практика',
   seminar: 'Семинар',
   lab: 'Лаборатория',
+}
+
+/**
+ * Мини-полоса недель 1..N (§этап В): сразу видно, что лекции идут в начале семестра, а практика после.
+ * Недели считает та же функция, что и main, — полоса не расходится с проверкой лимита и генерацией.
+ */
+function WeeksStrip({ load, semester }: { load: TeachingLoad; semester: Semester | undefined }) {
+  if (!semester) return null
+  const resolved = tryResolveWeeks(load, semester)
+  if (!resolved) return <span className="form-error">неверные недели</span>
+  return (
+    <div className="weeks-strip" title={describeLoadWeeks(load, resolved)}>
+      {Array.from({ length: semester.weeksCount }, (_, i) => (
+        <span key={i} className={i + 1 >= resolved.weekFrom && i + 1 <= resolved.weekTo ? 'weeks-strip-on' : undefined} />
+      ))}
+      <small>
+        {resolved.weekFrom}–{resolved.weekTo}
+      </small>
+    </div>
+  )
+}
+
+function tryResolveWeeks(load: TeachingLoad, semester: Semester) {
+  try {
+    return resolveLoadWeeks(load, semester)
+  } catch {
+    return null // строка с устаревшими неделями (семестр сократили) не должна ронять таблицу
+  }
 }
 
 /**
@@ -39,6 +68,7 @@ export function LoadEditorPage() {
   // нельзя, значение тут же возвращалось к первому семестру.
   useInitialSelection(semesters, semesterId !== '', (list) => setSemesterId(list[0]!.id))
   const selectedSemesterId = semesterId
+  const selectedSemester = semesters.find((s) => s.id === selectedSemesterId)
 
   useEffect(() => {
     void api.invoke('groups:list', {}).then((res) => (res.ok ? setGroups(res.value) : notifyError(res.error.message)))
@@ -83,6 +113,11 @@ export function LoadEditorPage() {
     { id: 'target', header: 'Группа/поток', accessorFn: (r) => (r.groupId != null ? groupById.get(r.groupId)?.name ?? `гр. #${r.groupId}` : `поток #${r.streamId}`) },
     { id: 'kind', header: 'Вид', accessorFn: (r) => KIND_LABEL[r.lessonKind] },
     { accessorKey: 'hoursPlanned', header: 'Часы' },
+    {
+      id: 'weeks',
+      header: 'Недели',
+      cell: ({ row }) => <WeeksStrip load={row.original} semester={selectedSemester} />,
+    },
     { id: 'parallel', header: '', cell: ({ row }) => (row.original.requiresParallel ? <span className="badge">парал.</span> : null) },
   ]
 
