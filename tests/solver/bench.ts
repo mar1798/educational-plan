@@ -4,22 +4,27 @@
  * 2) жадная фаза + локальный поиск (этап 6, бюджет 60 с) — штраф должен упасть минимум
  *    на 40 % относительно жадной фазы при том же бюджете 60 с (обе фазы считают штраф одной
  *    и той же функцией §5.5) — это и есть «Готово когда» этапа 6.
- * Наборы: `full-college` и он же с длинной практикой (п. 48) — без второго порог ничего не
- * говорит о занятиях из нескольких пар подряд.
+ * Наборы: `full-college`, он же с длинной практикой (п. 48) — без второго порог ничего не
+ * говорит о занятиях из нескольких пар подряд — и он же на второй фазе семестра с предпочтительными
+ * слотами (вес `phaseStability`, этап Д).
  * Запуск: `npm run bench:solver`.
  */
 import { solve } from '../../src/solver'
 import { solveGreedy } from '../../src/solver/greedy'
 import { validateSolution } from '../../src/solver/validate'
-import { fullCollegeInput, fullCollegeLongSessionsInput } from '../fixtures/solver'
+import { fullCollegeInput, fullCollegeLongSessionsInput, fullCollegePhasedInput } from '../fixtures/solver'
 import type { SolverInput } from '../../src/solver/model'
 
 const GREEDY_TIME_BUDGET_MS = 3000
 const SEARCH_TIME_BUDGET_MS = 60_000
 const MIN_IMPROVEMENT = 0.4
+// Вторая фаза семестра: половина занятий закреплена весом phaseStability, и поиск не вправе их улучшать,
+// поэтому порог ниже (порог 30 % выбран владельцем проекта). Замеры: вес 6 — 35,5 %, вес 3 — 35,8 %
+// (сдвинуто 35 занятий из 195), вес 1 — 46,4 %, но сдвигается уже половина занятий.
+const MIN_IMPROVEMENT_PHASED = 0.3
 
 /** Прогоняет обе фазы на наборе; `true` — порог выдержан. */
-async function runScenario(name: string, input: SolverInput): Promise<boolean> {
+async function runScenario(name: string, input: SolverInput, minImprovement = MIN_IMPROVEMENT): Promise<boolean> {
   console.log(`\n═══ ${name}: ${input.units.length} юнитов, ${input.teachers.length} преподавателей, ${input.rooms.length} кабинетов, ${input.groups.length} групп`)
 
   let ok = true
@@ -64,9 +69,9 @@ async function runScenario(name: string, input: SolverInput): Promise<boolean> {
 
   if (greedyPenalty > 0) {
     const improvement = (greedyPenalty - searchOutput.penalty) / greedyPenalty
-    console.log(`улучшение: ${(improvement * 100).toFixed(1)} % (требуется ≥ ${MIN_IMPROVEMENT * 100} %)`)
-    if (improvement < MIN_IMPROVEMENT) {
-      console.error(`НЕДОСТАТОЧНОЕ УЛУЧШЕНИЕ: ${(improvement * 100).toFixed(1)} % < ${MIN_IMPROVEMENT * 100} %`)
+    console.log(`улучшение: ${(improvement * 100).toFixed(1)} % (требуется ≥ ${minImprovement * 100} %)`)
+    if (improvement < minImprovement) {
+      console.error(`НЕДОСТАТОЧНОЕ УЛУЧШЕНИЕ: ${(improvement * 100).toFixed(1)} % < ${minImprovement * 100} %`)
       ok = false
     }
   } else {
@@ -81,6 +86,7 @@ async function main() {
   const results = [
     await runScenario('full-college', fullCollegeInput()),
     await runScenario('full-college, длинная практика', fullCollegeLongSessionsInput()),
+    await runScenario('full-college, вторая фаза семестра (стабильность)', fullCollegePhasedInput(), MIN_IMPROVEMENT_PHASED),
   ]
   if (results.includes(false)) process.exit(1)
   console.log('\nOK')

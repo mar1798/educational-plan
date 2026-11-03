@@ -2,6 +2,7 @@
  * Детерминированные генераторы входа солвера (§9.2 PLAN.md), чистый TypeScript без БД.
  * Каждая функция строит минимальный, но полный `SolverInput` под конкретный сценарий.
  */
+import { solveGreedy } from '../../src/solver/greedy'
 import { DAYS, PAIRS, SLOTS, slotIndex } from '../../src/solver/model'
 import type {
   BuildingInfo,
@@ -210,6 +211,19 @@ export function fullCollegeInput(): SolverInput {
  */
 export function fullCollegeLongSessionsInput(): SolverInput {
   return fullCollege([3, 2, 1, 1, 1, 1, 1], ['practice', 'lecture', 'practice', 'lab', 'seminar', 'computer'])
+}
+
+/**
+ * `full-college` на второй фазе семестра (§этап Д): пять занятий на группу продолжаются с прошлой
+ * фазы (их слоты из жадной расстановки той фазы — предпочтительные), ещё пять — новая практика.
+ * Мерит то, что вес `phaseStability` не ломает ни жадную фазу, ни порог улучшения локального поиска.
+ */
+export function fullCollegePhasedInput(): SolverInput {
+  const full = fullCollegeInput()
+  const continuing = (index: number) => index % 10 < 5 // занятия идут по 10 на группу подряд
+  const previous = solveGreedy({ ...full, units: full.units.filter((_, i) => continuing(i)) })
+  const slotByUnit = new Map(previous.assignments.map((a) => [a.unitId, a.slot]))
+  return { ...full, units: full.units.map((u, i) => (continuing(i) ? { ...u, preferredSlot: slotByUnit.get(u.id) ?? null } : u)) }
 }
 
 /**

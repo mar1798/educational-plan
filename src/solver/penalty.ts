@@ -35,6 +35,7 @@ export function zeroBreakdown(): RawBreakdown {
     roomMissing: 0,
     teacherDays: 0,
     sessionStart: 0,
+    phaseStability: 0,
   }
 }
 
@@ -158,6 +159,7 @@ export function computeRawBreakdown(input: SolverInput, state: Solution, placed:
     }
     if (p.roomIdx == null) raw.roomMissing += 1
     if (!isAlignedStart(s.pair, p.unit.span)) raw.sessionStart += 1
+    if (p.unit.preferredSlot != null && p.unit.preferredSlot !== p.slot) raw.phaseStability += 1
 
     const day = s.day
     for (const a of p.unit.attendees) {

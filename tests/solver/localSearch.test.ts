@@ -121,6 +121,7 @@ describe('localSearch (solve = жадная фаза + локальный пои
       'room_missing',
       'teacher_days',
       'session_start',
+      'phase_stability',
       'unplaced',
     ]
     for (const code of codes) expect(output.breakdown).toHaveProperty(code)

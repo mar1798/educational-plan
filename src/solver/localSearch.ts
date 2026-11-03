@@ -257,6 +257,7 @@ export async function runLocalSearch(input: SolverInput, greedy: SolverOutput, h
     v += soft * weights.teacherPreference
     if (roomIdx == null) v += weights.roomMissing
     if (!isAlignedStart(s.pair, unit.span)) v += weights.sessionStart
+    if (unit.preferredSlot != null && unit.preferredSlot !== slot) v += weights.phaseStability
     return v
   }
 

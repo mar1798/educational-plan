@@ -27,6 +27,7 @@ function baseInput(overrides: Partial<SolverInput> = {}): SolverInput {
       roomMissing: 1,
       teacherDays: 1,
       sessionStart: 1,
+      phaseStability: 1,
     },
     limits: { timeBudgetMs: 1000, maxIterations: 1000, seed: 1 },
     ...overrides,
@@ -144,6 +145,16 @@ describe('penalty.computeRawBreakdown', () => {
     const raw = computeRawBreakdown(input, state, placed)
     expect(raw.clinicalGrouping).toBe(1)
     expect(raw.clinicalBlockStart).toBe(2)
+  })
+
+  it('phaseStability: занятие не в слоте прошлой фазы штрафуется, в том же слоте — нет', () => {
+    const input = baseInput()
+    const state = Solution.forInput(input)
+    const moved = makeUnit({ teacherIdx: 0, preferredSlot: slotIndex(1, 1) })
+    const kept = makeUnit({ teacherIdx: 0, preferredSlot: slotIndex(2, 1) })
+    const free = makeUnit({ teacherIdx: 0 })
+    const placed = [place(input, state, moved, slotIndex(1, 2), 0), place(input, state, kept, slotIndex(2, 1), 0), place(input, state, free, slotIndex(3, 1), 0)]
+    expect(computeRawBreakdown(input, state, placed).phaseStability).toBe(1)
   })
 
   it('computePenalty: суммирует взвешенные критерии и штраф за unplaced', () => {

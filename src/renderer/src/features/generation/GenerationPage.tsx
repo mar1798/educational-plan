@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { Discipline, ScheduleTemplate, StudyGroup, Teacher } from '../../../../shared/ipc/contract'
+import type { Discipline, LectureCoverageItem, ScheduleTemplate, SemesterPhasesView, SemesterPhaseView, StudyGroup, Teacher } from '../../../../shared/ipc/contract'
 import { describeUnplaced } from '../../../../shared/schedule/messages'
 import { WEIGHT_BREAKDOWN_LABEL, weightKeyForCode } from '../../../../shared/schedule/weights'
 import type { SolverInput, SolverOutput, SolverProgress, Unit } from '../../../../solver/model'
@@ -59,6 +59,28 @@ export function GenerationPage() {
 
   const navigate = useNavigate()
 
+  // Фазы семестра (§этап Д): каждая фаза считается отдельно, результаты применяются разом.
+  const [phaseReport, setPhaseReport] = useState<SemesterPhasesView | null>(null)
+  const [runs, setRuns] = useState<{ phase: SemesterPhaseView; jobId: string; draft: { input: SolverInput; output: SolverOutput } }[]>([])
+  const [viewRun, setViewRun] = useState(0)
+  const [currentPhase, setCurrentPhase] = useState<SemesterPhaseView | null>(null)
+  // Пока идёт цепочка фаз, 'generation:done' обрабатывает сама цепочка, а не одиночный черновик.
+  const multiRef = useRef(false)
+  const abortChainRef = useRef(false)
+  const cancelWaitRef = useRef<(() => void) | null>(null)
+
+  useEffect(() => {
+    if (templateId === '') return
+    void api.invoke('generation:phases', { templateId }).then((res) => (res.ok ? setPhaseReport(res.value) : notifyError(res.error.message)))
+  }, [templateId])
+
+  // Дисциплины, где к началу практики пройдено меньше порога лекций: предупреждение, генерацию не блокирует.
+  const [coverageWarnings, setCoverageWarnings] = useState<LectureCoverageItem[]>([])
+  useEffect(() => {
+    if (selectedSemesterId === '') return
+    void api.invoke('load:lectureCoverage', { semesterId: selectedSemesterId }).then((res) => setCoverageWarnings(res.ok ? res.value.filter((i) => !i.ok) : []))
+  }, [selectedSemesterId])
+
   useEffect(() => {
     void api.invoke('teachers:list', {}).then((res) => (res.ok ? setTeachers(res.value) : notifyError(res.error.message)))
     void api.invoke('disciplines:list', {}).then((res) => (res.ok ? setDisciplines(res.value) : notifyError(res.error.message)))
@@ -80,7 +102,7 @@ export function GenerationPage() {
       if (payload.jobId === jobId) setProgress(payload)
     })
     const offDone = api.on('generation:done', (payload) => {
-      if (payload.jobId !== jobId) return
+      if (payload.jobId !== jobId || multiRef.current) return
       setDraft({ input: payload.input, output: payload.output })
       setProgress(null)
       setStopping(false)
@@ -91,6 +113,7 @@ export function GenerationPage() {
       setJobId(null)
       setProgress(null)
       setStopping(false)
+      cancelWaitRef.current?.()
     })
     return () => {
       offProgress()
@@ -137,21 +160,81 @@ export function GenerationPage() {
       .join(' + ')
   }
 
-  async function handleStart() {
-    if (templateId === '') return
+  /** Ждёт результат задания; null — задание упало или отменено. */
+  function waitForJob(id: string): Promise<{ input: SolverInput; output: SolverOutput } | null> {
+    return new Promise((resolve) => {
+      const offDone = api.on('generation:done', (payload) => {
+        if (payload.jobId !== id) return
+        cleanup()
+        resolve({ input: payload.input, output: payload.output })
+      })
+      const cleanup = () => {
+        offDone()
+        cancelWaitRef.current = null
+      }
+      cancelWaitRef.current = () => {
+        cleanup()
+        resolve(null)
+      }
+    })
+  }
+
+  async function handleStartPhases() {
+    if (templateId === '' || !phaseReport) return
+    const todo = phaseReport.phases.filter((p) => p.loads.length > 0)
+    if (todo.length === 0) return notifyError('В семестре нет нагрузки, которую можно расставить')
     setDraft(null)
+    setRuns([])
     setProgress(null)
     setStopping(false)
-    const res = await api.invoke('generation:start', { templateId })
-    if (!res.ok) {
-      notifyError(res.error.message)
+    multiRef.current = true
+    abortChainRef.current = false
+
+    const done: typeof runs = []
+    let previous: string | undefined
+    for (const phase of todo) {
+      if (abortChainRef.current) break
+      setCurrentPhase(phase)
+      const res = await api.invoke('generation:start', { templateId, weekFrom: phase.weekFrom, weekTo: phase.weekTo, previousJobId: previous })
+      if (!res.ok) {
+        notifyError(res.error.message)
+        abortChainRef.current = true
+        break
+      }
+      setJobId(res.value.jobId)
+      const result = await waitForJob(res.value.jobId)
+      if (!result) {
+        abortChainRef.current = true
+        break
+      }
+      done.push({ phase, jobId: res.value.jobId, draft: result })
+      previous = res.value.jobId
+    }
+
+    multiRef.current = false
+    setCurrentPhase(null)
+    if (abortChainRef.current) {
+      // Уже посчитанные фазы без остальных применять нельзя — семестр остался бы с половиной версий.
+      for (const r of done) await api.invoke('generation:cancel', { jobId: r.jobId })
+      setJobId(null)
+      setProgress(null)
       return
     }
-    setJobId(res.value.jobId)
+    setRuns(done)
+    setViewRun(0)
+    setJobId(done.at(-1)!.jobId)
+    setDraft(done[0]!.draft)
+  }
+
+  function showRun(i: number) {
+    setViewRun(i)
+    setDraft(runs[i]!.draft)
   }
 
   async function handleCancel() {
     if (!jobId) return
+    abortChainRef.current = true
+    cancelWaitRef.current?.()
     await api.invoke('generation:cancel', { jobId })
     setJobId(null)
     setProgress(null)
@@ -173,7 +256,9 @@ export function GenerationPage() {
 
   async function handleDiscard() {
     // Черновик живёт в памяти main до применения — отпускаем его там же, а не только в UI.
-    if (jobId) await api.invoke('generation:cancel', { jobId })
+    for (const r of runs) await api.invoke('generation:cancel', { jobId: r.jobId })
+    setRuns([])
+    if (jobId && runs.length === 0) await api.invoke('generation:cancel', { jobId })
     setJobId(null)
     setDraft(null)
   }
@@ -181,7 +266,7 @@ export function GenerationPage() {
   async function handleApply() {
     if (!jobId) return
     setApplying(true)
-    const res = await api.invoke('generation:apply', { jobId })
+    const res = runs.length > 0 ? await api.invoke('generation:applyPhases', { jobIds: runs.map((r) => r.jobId) }) : await api.invoke('generation:apply', { jobId })
     setApplying(false)
     if (!res.ok) {
       notifyError(res.error.message)
@@ -190,6 +275,7 @@ export function GenerationPage() {
     notifySuccess(`Черновик применён: создано занятий — ${res.value.created}`)
     setJobId(null)
     setDraft(null)
+    setRuns([])
     navigate('/schedule-template')
   }
 
@@ -233,15 +319,46 @@ export function GenerationPage() {
             <button
               type="button"
               className="btn btn-primary"
-              onClick={() => void handleStart()}
-              disabled={templateId === ''}
+              onClick={() => void handleStartPhases()}
+              disabled={templateId === '' || !phaseReport || phaseReport.phases.every((p) => p.loads.length === 0)}
               title={templateId === '' ? 'Сначала выберите семестр и версию шаблона' : undefined}
             >
-              Сгенерировать
+              Сгенерировать все фазы
             </button>
           )}
         </div>
       </div>
+
+      {!generating && draft == null && coverageWarnings.length > 0 && (
+        <div className="card">
+          <strong>Практика раньше, чем пройдены лекции</strong> — это рекомендация, генерации она не мешает:
+          <ul>
+            {coverageWarnings.map((i) => (
+              <li key={`${i.groupId}-${i.streamId}-${i.curriculumRowId}`}>{i.message}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {!generating && draft == null && phaseReport && (
+        <div className="card">
+          <strong>Фазы семестра</strong> — у каждой своя версия шаблона недели, с датой вступления в силу:
+          <ol>
+            {phaseReport.phases.map((p) => (
+              <li key={p.no}>
+                недели {p.weekFrom}–{p.weekTo} (с {p.effectiveFrom}): {p.loads.length === 0 ? 'нагрузки нет, фаза пропускается' : `${p.loads.length} строк нагрузки`}
+                {p.startedBy.length > 0 && <small> · граница: {p.startedBy.join('; ')}</small>}
+                {p.short && p.loads.length > 0 && <small> · одна неделя — подумайте, не склеить ли её с соседней, поправив недели у строки, давшей границу</small>}
+              </li>
+            ))}
+          </ol>
+          {phaseReport.problems.map((m) => (
+            <p key={m} className="form-error">
+              {m}
+            </p>
+          ))}
+        </div>
+      )}
 
       {!generating && draft == null && (
         <p className="history-empty">
@@ -253,6 +370,7 @@ export function GenerationPage() {
       {generating && (
         <div className="card generation-progress">
           <span className="generation-progress-phase">
+            {currentPhase ? `Фаза ${currentPhase.no} (недели ${currentPhase.weekFrom}–${currentPhase.weekTo}) · ` : ''}
             {progress
               ? `${PHASE_LABEL[progress.phase]} · ${progress.percent}% · размещено ${progress.placed} из ${progress.total}`
               : 'Запуск…'}
@@ -275,6 +393,15 @@ export function GenerationPage() {
 
       {draft && (
         <div className="card generation-result">
+          {runs.length > 0 && (
+            <div className="btn-group" style={{ marginBottom: 12 }}>
+              {runs.map((r, i) => (
+                <button key={r.jobId} type="button" className={`btn${i === viewRun ? ' btn-primary' : ''}`} onClick={() => showRun(i)}>
+                  Фаза {r.phase.no} · недели {r.phase.weekFrom}–{r.phase.weekTo}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="generation-summary">
             <div>
               <span className="generation-metric-label">Размещено</span>
@@ -313,7 +440,7 @@ export function GenerationPage() {
 
           <div className="btn-group" style={{ marginTop: 16 }}>
             <button type="button" className="btn btn-primary" onClick={() => void handleApply()} disabled={applying}>
-              {applying ? 'Применяю…' : 'Применить и открыть сетку'}
+              {applying ? 'Применяю…' : runs.length > 1 ? 'Применить все фазы и открыть сетку' : 'Применить и открыть сетку'}
             </button>
             <button type="button" className="btn" onClick={() => void handleDiscard()} disabled={applying}>
               Отклонить черновик

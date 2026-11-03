@@ -14,9 +14,12 @@ import { teachingLoad } from '../db/schema/load'
 import { building, pairGrid, room } from '../db/schema/org'
 import { studyGroup, teacher, teacherAbsence } from '../db/schema/people'
 import { scheduleTemplate, templateEntry } from '../db/schema/schedule'
+import { resolveLoadWeeks, type ResolvedLoadWeeks } from '../../shared/load/weeks'
 import { NotFoundError } from '../db/repo/base-repo'
 import { loadWeights } from '../db/repo/constraint-weights'
 import { resolveEntryAttendees } from '../db/repo/schedule-template'
+import { weeksContextOf } from '../db/repo/teaching-load'
+import { loadCoversWeeks } from './semester-phases'
 import type { DbLike } from '../db/repo/types'
 
 const DAYS = 6
@@ -95,7 +98,23 @@ function extraParity(rest: number, weeksCount: number): 'odd' | 'even' {
   return rest > evenWeeks ? 'odd' : 'even'
 }
 
-export function buildSolverInput(tx: DbLike, templateId: number, seed = Date.now()): SolverInput {
+/**
+ * Недельные занятия строки нагрузки внутри её недель действия (§этап Д). Ручная интенсивность
+ * («часов в неделю») даёт занятий столько, сколько влезает в эти часы, каждую неделю; без неё
+ * часы распределяются на недели действия строки — как раньше на весь семестр.
+ */
+function lessonsPerPhaseWeek(load: { hoursPlanned: number }, resolved: ResolvedLoadWeeks, sessionHours: number): { base: number; rest: number; weeks: number } {
+  if (resolved.manual) return { base: Math.max(1, Math.ceil(resolved.hoursPerWeek / sessionHours)), rest: 0, weeks: resolved.weeksCount }
+  return { ...lessonsFromHours(load.hoursPlanned, resolved.weeksCount, sessionHours), weeks: resolved.weeksCount }
+}
+
+/**
+ * `weekRange` — фаза семестра (§этап Д): в снимок попадает только нагрузка, действующая во всех
+ * неделях фазы, и занятий в неделю считается по правилу этапа В, а не по `weeksCount`. Солвер про
+ * недели не знает: изоляция сохраняется, меняется только этот мост. Без `weekRange` снимок
+ * строится как раньше — на весь семестр.
+ */
+export function buildSolverInput(tx: DbLike, templateId: number, seed = Date.now(), weekRange?: { from: number; to: number }): SolverInput {
   const tmpl = tx.select().from(scheduleTemplate).where(eq(scheduleTemplate.id, templateId)).get()
   if (!tmpl) throw new NotFoundError('schedule_template', templateId)
   const sem = tx.select().from(semester).where(eq(semester.id, tmpl.semesterId)).get()
@@ -166,8 +185,31 @@ export function buildSolverInput(tx: DbLike, templateId: number, seed = Date.now
     return out
   }
 
+  function activeLoadsInPhase() {
+    const ctx = weeksContextOf(sem!)
+    return tx
+      .select()
+      .from(teachingLoad)
+      .where(and(eq(teachingLoad.semesterId, tmpl!.semesterId), isNull(teachingLoad.validTo)))
+      .all()
+      .filter((l) => {
+        try {
+          return loadCoversWeeks(resolveLoadWeeks(l, ctx), weekRange!.from, weekRange!.to)
+        } catch {
+          return false // неверные недели видны в отчёте по фазам; в снимок такая строка не идёт
+        }
+      })
+  }
+
   // ── уже стоящие (is_locked=1) записи шаблона — препятствия, не входят в units.
-  const lockedEntries = tx.select().from(templateEntry).where(and(eq(templateEntry.templateId, templateId), eq(templateEntry.isLocked, true))).all()
+  // В фазе закреплённые записи нагрузки, которой в этих неделях нет, слот не занимают.
+  const phaseLoadIds = weekRange ? new Set(activeLoadsInPhase().map((l) => l.id)) : null
+  const lockedEntries = tx
+    .select()
+    .from(templateEntry)
+    .where(and(eq(templateEntry.templateId, templateId), eq(templateEntry.isLocked, true)))
+    .all()
+    .filter((e) => phaseLoadIds == null || phaseLoadIds.has(e.teachingLoadId))
   const lockedCountByLoad = new Map<number, number>()
   const fixed: FixedPlacement[] = []
   // Запись шаблона — одна пара, а длинное занятие (п. 48) — несколько записей подряд. Соседние
@@ -251,14 +293,16 @@ export function buildSolverInput(tx: DbLike, templateId: number, seed = Date.now
   }
 
   // ── недостающая нагрузка семестра → units (§5.2).
-  const loads = tx.select().from(teachingLoad).where(and(eq(teachingLoad.semesterId, tmpl.semesterId), isNull(teachingLoad.validTo))).all()
+  const loads = weekRange ? activeLoadsInPhase() : tx.select().from(teachingLoad).where(and(eq(teachingLoad.semesterId, tmpl.semesterId), isNull(teachingLoad.validTo))).all()
 
   const units: Unit[] = []
   const unitIdsByLoad = new Map<number, number[]>()
   let nextId = 1
 
   for (const load of loads) {
-    const { base, rest } = lessonsFromHours(load.hoursPlanned, sem.weeksCount, sessionSpan(load) * 2)
+    const phaseWeeks = weekRange ? lessonsPerPhaseWeek(load, resolveLoadWeeks(load, weeksContextOf(sem)), sessionSpan(load) * 2) : null
+    const { base, rest } = phaseWeeks ?? lessonsFromHours(load.hoursPlanned, sem.weeksCount, sessionSpan(load) * 2)
+    const parityWeeks = phaseWeeks?.weeks ?? sem.weeksCount
     const locked = lockedCountByLoad.get(load.id) ?? 0
     const wantedAll = base
     const wantedExtra = rest > 0 ? 1 : 0
@@ -268,7 +312,7 @@ export function buildSolverInput(tx: DbLike, templateId: number, seed = Date.now
     const ids: number[] = []
     for (let i = 0; i < needed; i++) {
       const isExtra = i >= wantedAll - Math.min(locked, wantedAll)
-      const parity = isExtra ? extraParity(rest, sem.weeksCount) : 'all'
+      const parity = isExtra ? extraParity(rest, parityWeeks) : 'all'
       const unit = unitFromLoad(load, parity, nextId++)
       if (unit) {
         units.push(unit)

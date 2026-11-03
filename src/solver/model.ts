@@ -49,6 +49,8 @@ export interface Weights {
   roomMissing: number
   teacherDays: number
   sessionStart: number
+  /** Перенос занятия продолжающейся нагрузки относительно предыдущей фазы семестра (§этап Д). */
+  phaseStability: number
 }
 
 export const DEFAULT_WEIGHTS: Weights = {
@@ -63,6 +65,7 @@ export const DEFAULT_WEIGHTS: Weights = {
   roomMissing: 20,
   teacherDays: 2,
   sessionStart: 3,
+  phaseStability: 6,
 }
 
 export type WeightCode = keyof Weights
@@ -80,6 +83,7 @@ export const WEIGHT_CODES: Record<WeightCode, string> = {
   roomMissing: 'room_missing',
   teacherDays: 'teacher_days',
   sessionStart: 'session_start',
+  phaseStability: 'phase_stability',
 }
 
 export type RoomType = 'lecture' | 'practice' | 'seminar' | 'lab' | 'phantom' | 'computer' | 'gym'
@@ -160,6 +164,11 @@ export interface Unit {
    * указывает первую пару, остальные — следующие слоты того же дня.
    */
   span: number
+  /**
+   * Слот, в котором это занятие стояло в предыдущей фазе семестра (§этап Д): перенос штрафуется
+   * мягким весом `phaseStability`, чтобы расписание не прыгало от фазы к фазе. Нет — без предпочтения.
+   */
+  preferredSlot?: number | null
 }
 
 export interface Assignment {

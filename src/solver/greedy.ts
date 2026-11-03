@@ -56,6 +56,8 @@ function localScore(input: SolverInput, state: Solution, unit: Unit, slot: numbe
 
   if (roomIdx == null) score += 5 // предпочитаем занятие с назначенным кабинетом
   if (!isAlignedStart(s.pair, unit.span)) score += 3 // п. 48: длинная практика — с 1-й или 4-й пары
+  // Фаза семестра (§этап Д): занятие, стоявшее в предыдущей фазе, ставим туда же, пока слот свободен.
+  if (unit.preferredSlot != null && unit.preferredSlot !== slot) score += 20
   return score
 }
 
