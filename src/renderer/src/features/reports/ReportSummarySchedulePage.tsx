@@ -6,7 +6,7 @@ import { useSemesterOptions } from '../load/useSemesterOptions'
 import { FilterSelect } from '../../ui/FilterSelect'
 import { useInitialSelection } from '../../ui/useInitialSelection'
 
-/** Отчёт «Сводное расписание колледжа» (§этап 7): тонкая обёртка над уже готовыми export:excel/export:pdf. */
+/** Отчёт «Сводное расписание колледжа» (§этап 7): тонкая обёртка над export:excel (формат колледжа, решение 49) и export:pdf. */
 export function ReportSummarySchedulePage() {
   const { semesters, label: semesterLabel } = useSemesterOptions()
   const [semesterId, setSemesterId] = useState<number | ''>('')
@@ -77,7 +77,7 @@ export function ReportSummarySchedulePage() {
             ))}
           </FilterSelect>
           <button type="button" className="btn" onClick={() => void exportExcel()}>
-            Экспорт в Excel (по группам)
+            Экспорт в Excel (один лист)
           </button>
           <button type="button" className="btn" onClick={() => void exportPdf()}>
             Печать PDF (по группам)
@@ -86,7 +86,8 @@ export function ReportSummarySchedulePage() {
       </div>
 
       <p className="history-empty">
-        Экспорт формирует по листу/странице на каждую группу, занятую в выбранной версии шаблона недели.
+        Excel — один лист, как в шаблоне колледжа: день, номер пары, время, дальше колонки всех групп. Подгруппы
+        разделены «/», поточная пара объединяет ячейки групп потока. PDF печатает по странице на группу.
       </p>
     </div>
   )

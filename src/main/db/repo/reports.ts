@@ -1,7 +1,7 @@
 /**
  * Отчёты этапа 7 (PLAN.md §6 «Этап 7», §1.1 п.22/25/36/39): выполнение нагрузки,
  * вычтенные часы, загрузка кабинетов. Сводное расписание отдельной функции не требует —
- * это уже существующие `exportSummaryScheduleExcel`/`printSummaryScheduleToPdf` (export/*.ts).
+ * это уже существующие `exportCollegeScheduleExcel`/`printSummaryScheduleToPdf` (export/*.ts).
  */
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { NotFoundError } from './base-repo'

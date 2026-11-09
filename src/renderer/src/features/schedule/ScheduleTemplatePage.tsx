@@ -402,10 +402,10 @@ export function ScheduleTemplatePage() {
       .then((r) => r.ok && setTemplates(r.value))
   }
 
-  async function handleExportExcel(kind: 'group' | 'teacher' | 'summary') {
+  async function handleExportExcel(kind: 'group' | 'teacher') {
     if (templateId === '') return
-    const targetId = kind === 'summary' ? undefined : cutTargetId === '' ? undefined : cutTargetId
-    if (kind !== 'summary' && targetId == null) {
+    const targetId = cutTargetId === '' ? undefined : cutTargetId
+    if (targetId == null) {
       notifyError(kind === 'group' ? 'Выберите группу в разрезе выше' : 'Выберите преподавателя в разрезе выше')
       return
     }
@@ -572,13 +572,14 @@ export function ScheduleTemplatePage() {
             >
               Excel: преподаватель
             </button>
-            {cutKind === 'summary' && (
-              <button type="button" className="btn btn-primary" title="Таблица «день × пара / группы» для печати, как в образце колледжа" onClick={() => void handleExportCollege()}>
-                Excel: формат колледжа
-              </button>
-            )}
-            <button type="button" className="btn" onClick={() => void handleExportExcel('summary')}>
-              Excel: сводное
+            {/* Сводное — один лист «день × пара / группы» по шаблону колледжа (решение 49). */}
+            <button
+              type="button"
+              className={cutKind === 'summary' ? 'btn btn-primary' : 'btn'}
+              title="Все группы на одном листе: день, пара, время, дальше колонки групп"
+              onClick={() => void handleExportCollege()}
+            >
+              Excel: сводное (все группы)
             </button>
             <button
               type="button"

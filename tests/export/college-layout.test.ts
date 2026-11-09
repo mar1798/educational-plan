@@ -33,7 +33,7 @@ describe('экспорт сводного расписания в формате
   })
 
   it('шапка и подписи: ФИО директора есть, у зама только должность и линия', () => {
-    expect(String(sheet.getCell(1, 1).value)).toMatch(/^Расписание на .+ учебный год$/)
+    expect(String(sheet.getCell(1, 1).value)).toMatch(/^Расписание на .+ учебный год \(действует с 01\.09\.2026\)$/)
     const texts: string[] = []
     sheet.eachRow((row) => row.eachCell((c) => typeof c.value === 'string' && texts.push(c.value)))
     expect(texts.some((t) => t.startsWith('Утверждаю: директор') && t.includes('Иванов И.И.'))).toBe(true)
@@ -42,23 +42,23 @@ describe('экспорт сводного расписания в формате
     expect(agreed).not.toContain('Иванов')
   })
 
-  it('служебные колонки зеркальны: День | Пары | Часы занятий … Часы занятий | Пары | День', () => {
+  it('один лист, колонки как в шаблоне: День | Пары | Часы занятий, дальше группы; зеркала справа нет', () => {
+    expect(sheet.workbook.worksheets).toHaveLength(1)
     const row = sheet.getRow(3)
-    const last = 3 + 1 + 3 // 1 группа
     expect([1, 2, 3].map((c) => row.getCell(c).value)).toEqual(['День', 'Пары', 'Часы занятий'])
     expect(row.getCell(4).value).toBe('11 СД')
-    expect([last - 2, last - 1, last].map((c) => row.getCell(c).value)).toEqual(['Часы занятий', 'Пары', 'День'])
+    expect(row.getCell(5).value).toBeNull()
   })
 
   it('день — объединение на 12 строк, пара — на две; время из сетки звонков', () => {
-    expect(sheet.getCell(4, 1).value).toBe('Понедельник')
-    expect(sheet.getCell(4 + 12, 1).value).toBe('Вторник')
+    expect(sheet.getCell(4, 1).value).toBe('ПОНЕДЕЛЬНИК')
+    expect(sheet.getCell(4 + 12, 1).value).toBe('ВТОРНИК')
     expect(sheet.getCell(4, 1).alignment?.textRotation).toBe(90)
     expect(sheet.getCell(5, 1).isMerged).toBe(true)
     expect(sheet.getCell(4 + 11, 1).isMerged).toBe(true)
     expect(sheet.getCell(4 + 12, 2).isMerged).toBe(true)
-    expect(sheet.getCell(4, 3).value).toBe('08:00–09:30')
-    expect(sheet.getCell(6, 3).value).toBe('09:35–11:05')
+    expect(sheet.getCell(4, 3).value).toBe('08:00-09:30')
+    expect(sheet.getCell(6, 3).value).toBe('09:35-11:05')
   })
 
   it('занятие: дисциплина сверху, преподаватель снизу в колонке группы', () => {
@@ -70,7 +70,7 @@ describe('экспорт сводного расписания в формате
 
   it('pageSetup: A4 альбомная, 4×3 страницы, область печати, закрепление', () => {
     expect(sheet.pageSetup).toMatchObject({ paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 4, fitToHeight: 3 })
-    expect(sheet.pageSetup.printArea).toMatch(/^A1:G\d+$/)
+    expect(sheet.pageSetup.printArea).toMatch(/^A1:D\d+$/)
     expect(sheet.views[0]).toMatchObject({ state: 'frozen', xSplit: 3, ySplit: 3 })
   })
 })

@@ -1,6 +1,6 @@
 /**
- * Экспорт расписания в Excel (§5.10 PLAN.md): расписание группы, преподавателя и сводное
- * (по всем группам, отдельный лист на группу) — на основе уже разрешённых имён из
+ * Экспорт расписания в Excel (§5.10 PLAN.md): расписание группы и преподавателя. Сводное — только
+ * в формате колледжа на одном листе (`college-schedule.ts`, решение 49), — на основе уже разрешённых имён из
  * `templateEntriesView` (§4.6), тем же представлением, что видит экран шаблона недели.
  */
 import ExcelJS from 'exceljs'
@@ -45,7 +45,7 @@ function cellText(entries: TemplateEntryView[]): string {
 
 /**
  * Имя листа Excel: до 31 символа, без `* ? : \ / [ ]` и не повторяющееся — иначе ExcelJS
- * роняет весь экспорт на середине (в сводном файле листы называются по именам групп).
+ * роняет весь экспорт на середине (листы называются по именам групп и преподавателей).
  */
 function sheetName(workbook: ExcelJS.Workbook, title: string): string {
   const base = title.replace(/[*?:\\/[\]]/g, ' ').trim().slice(0, 31) || 'Лист'
@@ -102,23 +102,6 @@ export async function exportTeacherScheduleExcel(tx: DbLike, templateId: number,
   await workbook.xlsx.writeFile(filePath)
 }
 
-/** Сводное расписание колледжа: отдельный лист на каждую группу, встречающуюся в шаблоне. */
-export async function exportSummaryScheduleExcel(tx: DbLike, templateId: number, filePath: string): Promise<void> {
-  const entries = templateEntriesView(tx, templateId)
-  const groupIds = [...new Set(entries.flatMap((e) => e.attendees.map((a) => a.groupId)))]
-  const pairNumbers = enabledPairNumbers(tx)
-
-  const workbook = new ExcelJS.Workbook()
-  if (groupIds.length === 0) {
-    buildGridSheet(workbook, 'Сводное расписание', [], pairNumbers)
-  }
-  for (const groupId of groupIds) {
-    const group = tx.select().from(studyGroup).where(eq(studyGroup.id, groupId)).get()
-    const groupEntries = entries.filter((e) => e.attendees.some((a) => a.groupId === groupId))
-    buildGridSheet(workbook, group?.name ?? `#${groupId}`, groupEntries, pairNumbers)
-  }
-  await workbook.xlsx.writeFile(filePath)
-}
 
 /** Простая табличная страница (заголовок + строки) — общий вид для трёх отчётов этапа 7. */
 interface TableColumn<T> {

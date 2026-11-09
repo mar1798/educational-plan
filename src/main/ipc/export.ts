@@ -1,11 +1,12 @@
 import { type BrowserWindow, dialog } from 'electron'
 import { exportCollegeScheduleInput, exportExcelInput, exportPdfInput, reportsExportExcelInput, reportsExportPdfInput } from '../../shared/ipc/schemas'
+import { eq } from 'drizzle-orm'
 import type { Db } from '../db/client'
+import { scheduleTemplate } from '../db/schema/schedule'
 import {
   exportDeductedHoursReportExcel,
   exportGroupScheduleExcel,
   exportRoomUtilizationReportExcel,
-  exportSummaryScheduleExcel,
   exportTeacherLoadReportExcel,
   exportTeacherScheduleExcel,
 } from '../export/excel'
@@ -25,12 +26,18 @@ async function saveDialog(getWindow: () => BrowserWindow | null, defaultPath: st
   return win ? dialog.showSaveDialog(win, { defaultPath, filters }) : dialog.showSaveDialog({ defaultPath, filters })
 }
 
+/** Версий шаблона у семестра несколько (фазы, решение 53) — имя файла по умолчанию их различает. */
+function collegeFileName(db: Db, templateId: number): string {
+  const tmpl = db.select().from(scheduleTemplate).where(eq(scheduleTemplate.id, templateId)).get()
+  return tmpl ? `raspisanie-kolledzh-v${tmpl.versionNo}-s-${tmpl.effectiveFrom}.xlsx` : 'raspisanie-kolledzh.xlsx'
+}
+
 export function registerExportHandlers(db: Db, getWindow: () => BrowserWindow | null) {
   handle('export:excel', exportExcelInput, async ({ templateId, kind, targetId }) => {
     if ((kind === 'group' || kind === 'teacher') && targetId == null) {
       throw new Error(kind === 'group' ? 'Не выбрана группа для экспорта' : 'Не выбран преподаватель для экспорта')
     }
-    const defaultName = kind === 'summary' ? 'raspisanie-svodnoe.xlsx' : `raspisanie-${kind}-${targetId}.xlsx`
+    const defaultName = kind === 'summary' ? collegeFileName(db, templateId) : `raspisanie-${kind}-${targetId}.xlsx`
     const result = await saveDialog(getWindow, defaultName, 'Excel', 'xlsx')
     if (result.canceled || !result.filePath) return { cancelled: true as const }
 
@@ -39,13 +46,14 @@ export function registerExportHandlers(db: Db, getWindow: () => BrowserWindow | 
     const filePath = result.filePath
     if (kind === 'group') await exportGroupScheduleExcel(db, templateId, targetId!, filePath)
     else if (kind === 'teacher') await exportTeacherScheduleExcel(db, templateId, targetId!, filePath)
-    else await exportSummaryScheduleExcel(db, templateId, filePath)
+    // Сводное — всегда один лист в формате колледжа (решение 49): «лист на группу» завуч не принимает.
+    else await exportCollegeScheduleExcel(db, templateId, filePath)
 
     return { path: filePath }
   })
 
   handle('export:collegeScheduleExcel', exportCollegeScheduleInput, async ({ templateId }) => {
-    const result = await saveDialog(getWindow, 'raspisanie-kolledzh.xlsx', 'Excel', 'xlsx')
+    const result = await saveDialog(getWindow, collegeFileName(db, templateId), 'Excel', 'xlsx')
     if (result.canceled || !result.filePath) return { cancelled: true as const }
     await exportCollegeScheduleExcel(db, templateId, result.filePath)
     return { path: result.filePath }

@@ -4,9 +4,11 @@
  *
  * - верхняя строка делится по `/` на стороны (слева 1-я подгруппа, справа 2-я), с каждой стороны
  *   снимается римский номер подгруппы (`I`, `II`, `III`), остаток — сокращение дисциплины;
- * - нижняя строка делится по `/` на преподавателей в том же порядке;
- * - без `/` и с номером («II Терап.») — клиническое занятие этой подгруппы; без `/` и без номера —
- *   занятие всей группы или потока;
+ * - нижняя строка делится по `/` на преподавателей в том же порядке; если занятие только у одной
+ *   стороны, снизу просто фамилия без `/` (как в шаблоне завуча);
+ * - римский номер даёт номер подгруппы и с `/` («/ II ЗОЖ»), и без («II Терап.» — клиническое
+ *   занятие по старой выгрузке); без `/` и без номера — занятие всей группы или потока;
+ * - пометка «(поток)» снимается: поток узнаётся по строке нагрузки, а не по тексту;
  * - несколько занятий в одной паре, записанные через `;` (так их пишет выгрузка этапа Б), разбираются
  *   каждое по этим правилам.
  */
@@ -28,6 +30,8 @@ export interface ParsedCell {
   teacherMismatch: boolean
 }
 
+const STREAM_MARK = /\(\s*поток\s*\)/gi
+
 const ROMAN: Record<string, number> = { I: 1, II: 2, III: 3, IV: 4 }
 const ROMAN_PREFIX = /^(IV|III|II|I)(?=\s|$)\s*/
 
@@ -45,6 +49,9 @@ function parsePart(top: string, bottom: string): { sides: ParsedSide[]; mismatch
   const tops = split(top, '/')
   const bottoms = bottom === '' ? [] : split(bottom, '/')
   const slashed = tops.length > 1
+  // В шаблоне у занятия одной подгруппы («/ II Неорг. хим.») снизу стоит просто фамилия, без «/».
+  const filledSides = tops.filter((t) => takeSubgroup(t).rest !== '').length
+  const singleTeacher = bottoms.length === 1 && (!slashed || filledSides === 1)
 
   const sides: ParsedSide[] = []
   tops.forEach((raw, i) => {
@@ -53,16 +60,17 @@ function parsePart(top: string, bottom: string): { sides: ParsedSide[]; mismatch
     if (rest === '') return
     sides.push({
       discipline: rest,
-      teacher: bottoms.length === tops.length ? bottoms[i] || null : bottoms.length === 1 && !slashed ? bottoms[0]! : null,
+      teacher: bottoms.length === tops.length ? bottoms[i] || null : singleTeacher ? bottoms[0]! : null,
       subgroupNo: slashed ? (no ?? i + 1) : no,
       clinical: !slashed && no != null,
     })
   })
-  return { sides, mismatch: slashed && bottoms.length > 0 && bottoms.length !== tops.length }
+  return { sides, mismatch: slashed && bottoms.length > 0 && bottoms.length !== tops.length && !singleTeacher }
 }
 
 export function parseCell(top: string | null, bottom: string | null): ParsedCell {
-  const topText = (top ?? '').replace(/\s+/g, ' ').trim()
+  // «(поток)» — пометка выгрузки (решение 49): поток узнаётся по строке нагрузки, а не по тексту.
+  const topText = (top ?? '').replace(STREAM_MARK, ' ').replace(/\s+/g, ' ').trim()
   const bottomText = (bottom ?? '').replace(/\s+/g, ' ').trim()
   if (topText === '') return { sides: [], teacherMismatch: false }
 

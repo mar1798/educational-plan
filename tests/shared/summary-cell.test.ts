@@ -41,19 +41,33 @@ describe('buildSummaryCell', () => {
     expect(cell).toHaveLength(1)
     expect(cell[0]).toMatchObject({
       top: 'Кырг. яз. / Ин. яз.',
-      bottom: 'Сидоров О. / Петрова А.',
+      bottom: 'Сидоров О./Петрова А.',
       entryIds: [1, 2],
     })
   })
 
-  it('одна сторона пустая: «/» остаётся', () => {
-    expect(buildSummaryCell([entry(1, 'Ист. КР', 'Иванов Иван', 'left', false, 1)], 1)[0]!.top).toBe('Ист. КР /')
-    expect(buildSummaryCell([entry(1, 'Неорг. хим.', 'Иванов Иван', 'right', false, 2)], 1)[0]!.top).toBe(' / Неорг. хим.')
+  it('одна сторона пустая: «/» остаётся сверху, снизу просто преподаватель (шаблон 06.11)', () => {
+    const left = buildSummaryCell([entry(1, 'Ист. КР', 'Иванов Иван', 'left', false, 1)], 1)[0]!
+    expect([left.top, left.bottom]).toEqual(['Ист. КР /', 'Иванов И.'])
+    const right = buildSummaryCell([entry(1, 'Неорг. хим.', 'Иванов Иван', 'right', false, 2)], 1)[0]!
+    expect([right.top, right.bottom]).toEqual(['/ Неорг. хим.', 'Иванов И.'])
   })
 
-  it('клиническое занятие — номер подгруппы без «/»', () => {
+  it('клиническое занятие — римский номер на своей стороне: I слева, II и III справа', () => {
+    expect(buildSummaryCell([entry(1, 'ЗОЖ', 'Жумакеева Жамиля', 'left', true, 1)], 1)[0]!.top).toBe('I ЗОЖ /')
+    expect(buildSummaryCell([entry(1, 'ЗОЖ', 'Жумакеева Жамиля', 'right', true, 2)], 1)[0]!.top).toBe('/ II ЗОЖ')
+    expect(buildSummaryCell([entry(1, 'ОСД', 'Абдиева Жылдыз', 'third', true, 3)], 1)[0]!.top).toBe('/ III ОСД')
+  })
+
+  it('неклиническое и клиническое в одной паре — одна ячейка, как «Лат. яз. / II ЗОЖ»', () => {
+    const cell = buildSummaryCell([entry(2, 'ЗОЖ', 'Жумакеева Жамиля', 'right', true, 2), entry(1, 'Лат. яз.', 'Мусаева Эльвира', 'left', false, 1)], 1)
+    expect(cell).toHaveLength(1)
+    expect(cell[0]).toMatchObject({ top: 'Лат. яз. / II ЗОЖ', bottom: 'Мусаева Э./Жумакеева Ж.' })
+  })
+
+  it('две клинические бригады в одной паре', () => {
     const cell = buildSummaryCell([entry(2, 'Терап.', 'Петрова Анна', 'right', true, 2), entry(1, 'Офт.', 'Сидоров Олег', 'left', true, 1)], 1)
-    expect(cell.map((p) => p.top)).toEqual(['I Офт.', 'II Терап.'])
+    expect(cell.map((p) => p.top)).toEqual(['I Офт. / II Терап.'])
   })
 
   it('три подгруппы читаются как «I / II / III»', () => {

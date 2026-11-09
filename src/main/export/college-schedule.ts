@@ -1,7 +1,9 @@
 /**
- * Сводное расписание в формате колледжа (§этап Б, разбор образца в PLAN-schedule-feedback.md):
- * слева день и время, сверху группы; те же служебные колонки зеркально справа; каждая пара —
- * две строки (дисциплина / преподаватель). Печатается из Excel: PDF на 31 колонку нечитаем.
+ * Сводное расписание в формате колледжа (решение 49, шаблон завуча от 06.11.2026): ОДИН лист,
+ * колонки «День | Пары | Часы занятий», дальше все группы подряд; каждая пара — две строки
+ * (дисциплина / преподаватель). Зеркальных служебных колонок справа в шаблоне нет — убраны.
+ * Подгруппы — через `/`, поточная пара объединяет ячейки соседних групп и помечена «(поток)».
+ * Печатается из Excel: PDF на 31 колонку нечитаем.
  */
 import ExcelJS from 'exceljs'
 import { eq } from 'drizzle-orm'
@@ -16,13 +18,14 @@ import { scheduleTemplate } from '../db/schema/schedule'
 export const SETTING_DIRECTOR = 'schedule_director_name'
 export const SETTING_DEPUTY = 'schedule_deputy_name'
 
+// Дни заглавными, как в шаблоне завуча («ПОНЕДЕЛЬНИК»); импорт сетки сравнивает без учёта регистра.
 const DAYS = [
-  { no: 1, label: 'Понедельник' },
-  { no: 2, label: 'Вторник' },
-  { no: 3, label: 'Среда' },
-  { no: 4, label: 'Четверг' },
-  { no: 5, label: 'Пятница' },
-  { no: 6, label: 'Суббота' },
+  { no: 1, label: 'ПОНЕДЕЛЬНИК' },
+  { no: 2, label: 'ВТОРНИК' },
+  { no: 3, label: 'СРЕДА' },
+  { no: 4, label: 'ЧЕТВЕРГ' },
+  { no: 5, label: 'ПЯТНИЦА' },
+  { no: 6, label: 'СУББОТА' },
 ]
 
 const FONT = 'Times New Roman'
@@ -41,9 +44,36 @@ function signatureLine(prefix: string, role: string, name: string): string {
   return `${prefix}: ${role} ____________${name ? `  ${name}` : ''}`
 }
 
-export function collegeCellText(entries: TemplateEntryView[], groupId: number): { top: string; bottom: string } {
+export const STREAM_MARK = '(поток)'
+
+function ruDate(iso: string): string {
+  const [y, m, d] = iso.split('-')
+  return `${d}.${m}.${y}`
+}
+
+/** « (действует с 05.10.2026 по 18.10.2026)» — период версии шаблона для заголовка листа. */
+export function versionPeriod(tmpl: { effectiveFrom: string; effectiveTo: string | null }): string {
+  return ` (действует с ${ruDate(tmpl.effectiveFrom)}${tmpl.effectiveTo ? ` по ${ruDate(tmpl.effectiveTo)}` : ''})`
+}
+
+export interface CollegeCell {
+  top: string
+  bottom: string
+  /** Записи поточной пары; у обычной ячейки null. Соседние группы с тем же набором объединяются. */
+  streamKey: string | null
+  /** Занятие только у одной подгруппы прижимается к своей стороне, как в шаблоне («Ист. КР /» слева). */
+  align: 'left' | 'center' | 'right'
+}
+
+export function collegeCellText(entries: TemplateEntryView[], groupId: number): CollegeCell {
   const parts = buildSummaryCell(entries, groupId)
-  return { top: parts.map((p) => p.top).join('; '), bottom: parts.map((p) => p.bottom).join('; ') }
+  const top = parts.map((p) => (p.isStream ? `${p.top} ${STREAM_MARK}` : p.top.trim())).join('; ')
+  const bottom = parts.map((p) => p.bottom.trim()).join('; ')
+  const only = parts.length === 1 ? parts[0]! : null
+  const streamKey = only?.isStream ? only.entryIds.join(',') : null
+  const sided = only && !only.isStream ? only.top.trim() : ''
+  const align = sided.startsWith('/') ? 'right' : sided.endsWith('/') ? 'left' : 'center'
+  return { top, bottom, streamKey, align }
 }
 
 export async function exportCollegeScheduleExcel(tx: DbLike, templateId: number, filePath: string): Promise<void> {
@@ -72,8 +102,8 @@ export async function exportCollegeScheduleExcel(tx: DbLike, templateId: number,
   const wb = new ExcelJS.Workbook()
   const sheet = wb.addWorksheet('Расписание')
   const groupsFrom = LEFT_COLS + 1
-  const groupsTo = LEFT_COLS + columns.length
-  const lastCol = groupsTo + LEFT_COLS
+  const groupsTo = LEFT_COLS + Math.max(1, columns.length)
+  const lastCol = groupsTo
   const rowsPerDay = pairs.length * 2
   const lastDataRow = FIRST_DATA_ROW + DAYS.length * rowsPerDay - 1
   const footerRow = lastDataRow + 2
@@ -83,7 +113,9 @@ export async function exportCollegeScheduleExcel(tx: DbLike, templateId: number,
   // Шапка листа: год, подпись директора и подпись зама внизу.
   sheet.mergeCells(1, 1, 1, lastCol)
   const title = sheet.getCell(1, 1)
-  title.value = `Расписание на ${year?.name ?? ''} учебный год`.replace('  ', ' ')
+  // После генерации по фазам у семестра несколько версий шаблона (решение 53): без даты действия
+  // распечатки разных фаз не отличить.
+  title.value = `Расписание на ${year?.name ?? ''} учебный год${versionPeriod(tmpl)}`.replace('  ', ' ')
   title.font = bold(28)
   title.alignment = { horizontal: 'center', vertical: 'middle' }
 
@@ -99,9 +131,8 @@ export async function exportCollegeScheduleExcel(tx: DbLike, templateId: number,
   agreed.font = bold(20)
   agreed.alignment = { horizontal: 'left', vertical: 'middle' }
 
-  // Строка групп: служебные колонки повторены справа зеркально, чтобы широкий лист читался с обоих краёв.
+  // Строка групп: «День | Пары | Часы занятий», дальше группы — как в шаблоне завуча.
   const leftHeads = ['День', 'Пары', 'Часы занятий']
-  const rightHeads = [...leftHeads].reverse()
   const head = (col: number, text: string) => {
     const c = sheet.getCell(HEADER_ROW, col)
     c.value = text
@@ -111,13 +142,11 @@ export async function exportCollegeScheduleExcel(tx: DbLike, templateId: number,
   }
   leftHeads.forEach((t, i) => head(1 + i, t))
   columns.forEach((g, i) => head(groupsFrom + i, g.name))
-  rightHeads.forEach((t, i) => head(groupsTo + 1 + i, t))
 
   // Колонки: служебные узкие, группы одинаковой ширины.
   const serviceWidths = [6, 6, 14]
   serviceWidths.forEach((w, i) => {
     sheet.getColumn(1 + i).width = w
-    sheet.getColumn(lastCol - i).width = w
   })
   for (let c = groupsFrom; c <= groupsTo; c++) sheet.getColumn(c).width = 34
 
@@ -132,34 +161,43 @@ export async function exportCollegeScheduleExcel(tx: DbLike, templateId: number,
   DAYS.forEach((day, dayIdx) => {
     const dayFirst = FIRST_DATA_ROW + dayIdx * rowsPerDay
     // День — вертикальное объединение на все строки дня, текст повёрнут на 90°.
-    for (const col of [1, lastCol]) {
-      sheet.mergeCells(dayFirst, col, dayFirst + rowsPerDay - 1, col)
-      side(col, dayFirst, day.label, 22, true)
-    }
+    sheet.mergeCells(dayFirst, 1, dayFirst + rowsPerDay - 1, 1)
+    side(1, dayFirst, day.label, 22, true)
 
     pairs.forEach((p, pairIdx) => {
       const r1 = dayFirst + pairIdx * 2
       const r2 = r1 + 1
-      const time = `${p.startsAt}–${p.endsAt}`
-      for (const [col, text] of [[LEFT_COLS - 1, p.pairNo], [LEFT_COLS, time], [lastCol - 1, p.pairNo], [lastCol - 2, time]] as const) {
+      const time = `${p.startsAt}-${p.endsAt}`
+      for (const [col, text] of [[LEFT_COLS - 1, p.pairNo], [LEFT_COLS, time]] as const) {
         sheet.mergeCells(r1, col, r2, col)
         side(col, r1, text, 18)
       }
 
-      columns.forEach((g, i) => {
+      const cells = columns.map((g) => collegeCellText(byCell.get(`${day.no}:${p.pairNo}:${g.id}`) ?? [], g.id))
+      for (let i = 0; i < cells.length; ) {
+        const cell = cells[i]!
+        // Поточная пара у соседних групп — одна объединённая ячейка на всех: так поток виден
+        // сразу, а не угадывается по одинаковому тексту в разных колонках.
+        let span = 1
+        while (cell.streamKey != null && i + span < cells.length && cells[i + span]!.streamKey === cell.streamKey) span++
         const col = groupsFrom + i
-        const { top, bottom } = collegeCellText(byCell.get(`${day.no}:${p.pairNo}:${g.id}`) ?? [], g.id)
+        const toCol = col + span - 1
+        if (span > 1) {
+          sheet.mergeCells(r1, col, r1, toCol)
+          sheet.mergeCells(r2, col, r2, toCol)
+        }
         const topCell = sheet.getCell(r1, col)
-        topCell.value = top || null
+        topCell.value = cell.top || null
         topCell.font = bold(20)
         topCell.border = { top: THIN, left: THIN, right: THIN }
-        topCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true, shrinkToFit: false }
+        topCell.alignment = { horizontal: cell.align, vertical: 'middle', wrapText: true, shrinkToFit: false }
         const bottomCell = sheet.getCell(r2, col)
-        bottomCell.value = bottom || null
+        bottomCell.value = cell.bottom || null
         bottomCell.font = bold(14)
         bottomCell.border = { bottom: THIN, left: THIN, right: THIN }
-        bottomCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
-      })
+        bottomCell.alignment = { horizontal: cell.align, vertical: 'middle', wrapText: true }
+        i += span
+      }
       sheet.getRow(r1).height = 34
       sheet.getRow(r2).height = 22
     })

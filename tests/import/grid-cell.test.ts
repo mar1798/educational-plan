@@ -23,6 +23,15 @@ describe('разбор ячейки сводного расписания (эт�
   it('одна сторона пустая: занятие только у одной подгруппы', () => {
     expect(parseCell('Ист. КР /', 'Иванов И. /').sides).toEqual([{ discipline: 'Ист. КР', teacher: 'Иванов И.', subgroupNo: 1, clinical: false }])
     expect(parseCell('/ II Неорг. хим.', '/ Петров П.').sides).toEqual([{ discipline: 'Неорг. хим.', teacher: 'Петров П.', subgroupNo: 2, clinical: false }])
+    // Как в шаблоне завуча 06.11: у занятия одной подгруппы снизу просто фамилия, без «/».
+    const fromTemplate = parseCell('/ II Неорг. хим.', 'Калдыбаева Д.')
+    expect(fromTemplate.sides).toEqual([{ discipline: 'Неорг. хим.', teacher: 'Калдыбаева Д.', subgroupNo: 2, clinical: false }])
+    expect(fromTemplate.teacherMismatch).toBe(false)
+    expect(parseCell('Ист. КР /', 'Кадыракун У.').sides[0]).toMatchObject({ teacher: 'Кадыракун У.', subgroupNo: 1 })
+    expect(parseCell('Лат. яз. / II ЗОЖ', 'Мусаева Э./Жумакеева Ж.').sides.map((x) => [x.discipline, x.teacher, x.subgroupNo])).toEqual([
+      ['Лат. яз.', 'Мусаева Э.', 1],
+      ['ЗОЖ', 'Жумакеева Ж.', 2],
+    ])
   })
 
   it('клиническое занятие — номер без «/»', () => {
