@@ -76,9 +76,12 @@ export function GenerationPage() {
 
   // Дисциплины, где к началу практики пройдено меньше порога лекций: предупреждение, генерацию не блокирует.
   const [coverageWarnings, setCoverageWarnings] = useState<LectureCoverageItem[]>([])
+  // Необъединённые поточные лекции (решение 54): генерация поставит их группам в разные пары.
+  const [streamCandidates, setStreamCandidates] = useState(0)
   useEffect(() => {
     if (selectedSemesterId === '') return
     void api.invoke('load:lectureCoverage', { semesterId: selectedSemesterId }).then((res) => setCoverageWarnings(res.ok ? res.value.filter((i) => !i.ok) : []))
+    void api.invoke('streams:detect', { semesterId: selectedSemesterId }).then((res) => setStreamCandidates(res.ok ? res.value.length : 0))
   }, [selectedSemesterId])
 
   useEffect(() => {
@@ -328,6 +331,17 @@ export function GenerationPage() {
           )}
         </div>
       </div>
+
+      {!generating && draft == null && streamCandidates > 0 && (
+        <div className="card">
+          <strong>Найдены лекции, которые можно читать потоком: {streamCandidates}</strong> — один преподаватель читает
+          одну дисциплину нескольким группам отдельными строками. Пока они не объединены, каждая группа получит свою
+          пару.{' '}
+          <button type="button" className="btn-link" onClick={() => navigate('/streams')}>
+            Объединить в потоки
+          </button>
+        </div>
+      )}
 
       {!generating && draft == null && coverageWarnings.length > 0 && (
         <div className="card">

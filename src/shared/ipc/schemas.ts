@@ -581,6 +581,16 @@ export const streamCreateInput = z.object({
 
 export const streamDisbandInput = z.object({ id: z.number().int().positive() })
 
+export const streamsDetectInput = z.object({ semesterId: z.number().int().positive() })
+
+export const streamsMergeDetectedInput = z.object({
+  semesterId: z.number().int().positive(),
+  keys: z
+    .array(z.string().regex(/^\d+(,\d+)+$/))
+    .min(1, 'Выберите хотя бы одну лекцию')
+    .refine((keys) => new Set(keys).size === keys.length, 'Одна и та же лекция выбрана дважды'),
+})
+
 // Прочие часы (§3.9a): вне сетки, солвер их не получает.
 export const otherLoadListInput = z.object({ semesterId: z.number().int().positive() })
 

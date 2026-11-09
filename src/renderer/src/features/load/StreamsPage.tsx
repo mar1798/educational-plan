@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { StreamWithMembers, StudyGroup } from '../../../../shared/ipc/contract'
+import type { StreamCandidate, StreamWithMembers, StudyGroup } from '../../../../shared/ipc/contract'
 import { api } from '../../api/client'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { notifyError, notifySuccess } from '../../ui/toast'
@@ -11,6 +11,7 @@ import { useInitialSelection } from '../../ui/useInitialSelection'
 /**
  * Потоки (§3.5a): лекция читается сразу нескольким группам одной специальности и курса.
  * Расформирование распадает поточные строки нагрузки обратно на группы-участницы.
+ * «Возможные потоки» (решение 54): main находит одинаковые лекции групп, завуч подтверждает.
  */
 export function StreamsPage() {
   const { semesters, label: semesterLabel } = useSemesterOptions()
@@ -19,6 +20,9 @@ export function StreamsPage() {
   const [groups, setGroups] = useState<StudyGroup[]>([])
   const [creating, setCreating] = useState(false)
   const [pendingDisband, setPendingDisband] = useState<StreamWithMembers | null>(null)
+  const [candidates, setCandidates] = useState<StreamCandidate[] | null>(null)
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [merging, setMerging] = useState(false)
 
   // Пока завуч явно не выбрал семестр, подставляем первый из списка — но ровно один раз,
   // на его приезд: пока это считалось на каждый рендер, пустой пункт фильтра выбрать было
@@ -32,11 +36,42 @@ export function StreamsPage() {
 
   const refresh = useCallback(() => {
     if (selectedSemesterId === '') return Promise.resolve()
-    return api.invoke('streams:listForSemester', { semesterId: selectedSemesterId }).then((res) => {
-      if (res.ok) setStreams(res.value)
-      else notifyError(res.error.message)
-    })
+    return Promise.all([
+      api.invoke('streams:listForSemester', { semesterId: selectedSemesterId }).then((res) => {
+        if (res.ok) setStreams(res.value)
+        else notifyError(res.error.message)
+      }),
+      api.invoke('streams:detect', { semesterId: selectedSemesterId }).then((res) => {
+        if (!res.ok) return notifyError(res.error.message)
+        setCandidates(res.value)
+        // По умолчанию отмечено всё, что можно объединить: обычный случай — согласиться со всем списком.
+        setPicked(new Set(res.value.filter((c) => c.blocked == null).map((c) => c.key)))
+      }),
+    ]).then(() => undefined)
   }, [selectedSemesterId])
+
+  async function mergePicked() {
+    if (selectedSemesterId === '' || picked.size === 0) return
+    setMerging(true)
+    const res = await api.invoke('streams:mergeDetected', { semesterId: selectedSemesterId, keys: [...picked] })
+    setMerging(false)
+    if (!res.ok) return notifyError(res.error.message)
+    const { merged, streamsCreated, removedEntries, skipped } = res.value
+    let text = `Объединено лекций: ${merged}, новых потоков: ${streamsCreated}`
+    if (removedEntries > 0) text += `. Из черновых версий шаблона снято записей: ${removedEntries} — запустите генерацию заново`
+    notifySuccess(text)
+    for (const m of skipped) notifyError(m)
+    await refresh()
+  }
+
+  function togglePick(key: string) {
+    setPicked((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
 
   useEffect(() => {
     void refresh()
@@ -88,6 +123,33 @@ export function StreamsPage() {
 
       {selectedSemesterId === '' && <p className="history-empty">Выберите семестр</p>}
       {selectedSemesterId !== '' && streams?.length === 0 && <p className="history-empty">Потоков в этом семестре пока нет</p>}
+
+      {candidates != null && candidates.length > 0 && (
+        <div className="card">
+          <div className="scheme-card-header">
+            <strong>Возможные потоки: {candidates.length}</strong>
+            <button type="button" className="btn btn-primary" disabled={picked.size === 0 || merging} onClick={() => void mergePicked()}>
+              {merging ? 'Объединяю…' : `Объединить выбранные (${picked.size})`}
+            </button>
+          </div>
+          <p className="history-empty">
+            Одну и ту же лекцию один преподаватель читает нескольким группам отдельными строками нагрузки. Пока это не поток,
+            генерация ставит её каждой группе в свою пару, а в сводном расписании поточная пара не видна.
+          </p>
+          <ul className="stream-candidates">
+            {candidates.map((c) => (
+              <li key={c.key}>
+                <label>
+                  <input type="checkbox" checked={picked.has(c.key)} disabled={c.blocked != null} onChange={() => togglePick(c.key)} />{' '}
+                  <strong>{c.disciplineName}</strong> — {c.groupNames.join(', ')} · {c.teacherName} · {c.hoursPlanned} ч
+                  {c.draftEntries > 0 && <small> · снимется из черновиков шаблона: {c.draftEntries}</small>}
+                </label>
+                {c.blocked && <div className="form-error">{c.blocked}</div>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {streams?.map((s) => (
         <div className="card" key={s.id}>

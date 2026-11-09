@@ -1495,3 +1495,12 @@ table.data-table {
   margin-left: 6px;
   color: var(--color-text-muted);
 }
+
+/* Возможные потоки (решение 54): список с отметками, причина блокировки под строкой. */
+.stream-candidates {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: grid;
+  gap: 6px;
+}

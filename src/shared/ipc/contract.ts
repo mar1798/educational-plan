@@ -406,6 +406,29 @@ export interface StreamMember {
   rowVersion: number
 }
 
+/** Лекция, которую один преподаватель читает нескольким группам отдельными строками (решение 54). */
+export interface StreamCandidate {
+  /** Строки нагрузки через запятую — по нему экран просит объединить. */
+  key: string
+  loadIds: number[]
+  groupIds: number[]
+  groupNames: string[]
+  disciplineName: string
+  teacherName: string
+  hoursPlanned: number
+  /** Сколько записей черновых версий шаблона снимется: поток встанет при следующей генерации. */
+  draftEntries: number
+  /** Почему объединить нельзя; null — можно. */
+  blocked: string | null
+}
+
+export interface StreamMergeResult {
+  merged: number
+  streamsCreated: number
+  removedEntries: number
+  skipped: string[]
+}
+
 export interface StreamWithMembers extends Stream {
   members: StreamMember[]
 }
@@ -896,6 +919,8 @@ export interface IpcContract {
   'streams:listForSemester': { in: { semesterId: number }; out: StreamWithMembers[] }
   'streams:create': { in: StreamCreateInput; out: StreamWithMembers }
   'streams:disband': { in: { id: number }; out: { createdLoadIds: number[] } }
+  'streams:detect': { in: { semesterId: number }; out: StreamCandidate[] }
+  'streams:mergeDetected': { in: { semesterId: number; keys: string[] }; out: StreamMergeResult }
 
   // Прочие часы (§3.9a): вне сетки, в годовую нагрузку и отчёт входят, солвер не видит.
   'otherLoad:list': { in: { semesterId: number }; out: OtherLoad[] }

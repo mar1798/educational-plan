@@ -16,6 +16,8 @@ import {
   otherLoadSaveInput,
   streamCreateInput,
   streamDisbandInput,
+  streamsDetectInput,
+  streamsMergeDetectedInput,
   streamsListForSemesterInput,
   lectureCoverageInput,
   suggestLectureHoursInput,
@@ -35,6 +37,7 @@ import { teachingLoad } from '../db/schema/load'
 import { otherLoad } from '../db/schema/system'
 import { lesson, templateEntry } from '../db/schema/schedule'
 import { lectureCoverage, suggestLectureHours } from '../services/lecture-coverage'
+import { detectStreamCandidates, mergeStreamCandidates } from '../services/stream-detect'
 import { handle } from './register'
 
 export function registerTeachingLoadHandlers(db: Db) {
@@ -97,6 +100,15 @@ export function registerTeachingLoadHandlers(db: Db) {
   handle('streams:disband', streamDisbandInput, ({ id }) => {
     const { result } = runOperation(db, 'bulk_edit', { streamId: id }, (tx, operationId) =>
       disbandStream(tx, id, { operationId, reason: 'расформирование потока' }),
+    )
+    return result
+  })
+
+  handle('streams:detect', streamsDetectInput, ({ semesterId }) => detectStreamCandidates(db, semesterId))
+
+  handle('streams:mergeDetected', streamsMergeDetectedInput, ({ semesterId, keys }) => {
+    const { result } = runOperation(db, 'bulk_edit', { semesterId, keys }, (tx, operationId) =>
+      mergeStreamCandidates(tx, semesterId, keys, { operationId, reason: 'объединение лекций в поток' }),
     )
     return result
   })
