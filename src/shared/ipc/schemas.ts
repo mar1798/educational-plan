@@ -294,6 +294,11 @@ export const semesterSaveInput = withOptimisticId
   })
   .superRefine(requireRowVersionOnUpdate)
   .superRefine(requireOrderedRange)
+  // Неделя практики за пределами семестра делала невалидной всю практику без заданных недель.
+  .refine((v) => v.practiceStartWeek == null || v.practiceStartWeek <= v.weeksCount, {
+    message: 'Неделя начала практики не может быть позже последней недели семестра',
+    path: ['practiceStartWeek'],
+  })
 
 export const semesterStudyWeeksInput = z.object({ semesterId: z.number().int().positive() })
 

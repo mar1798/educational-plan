@@ -1,13 +1,13 @@
 /**
  * Фазы семестра (§этап Д). Фаза — непрерывный отрезок учебных недель, в котором набор действующих
  * строк нагрузки не меняется. Границы дают `week_from` и `week_to + 1` всех строк семестра; каждая
- * фаза получает свою версию шаблона недели. Обычно выходит 2–4 фазы (нед. 1–3 только лекции,
- * 4–6 лекции и практика, 7–18 практика).
+ * фаза получает свою версию шаблона недели. С правилом «сначала лекции» (решение 53) у каждой
+ * дисциплины свой конец лекций, поэтому фаз может быть заметно больше, чем «лекции → практика».
  */
-import { and, eq, isNull } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { resolveLoadWeeks, type ResolvedLoadWeeks } from '../../shared/load/weeks'
 import { NotFoundError } from '../db/repo/base-repo'
-import { weeksContextOf } from '../db/repo/teaching-load'
+import { effectiveSemesterLoads, weeksContextOf } from '../db/repo/teaching-load'
 import type { DbLike } from '../db/repo/types'
 import { semester } from '../db/schema/calendar'
 import { curriculumRow, discipline } from '../db/schema/curriculum'
@@ -64,7 +64,8 @@ export function semesterPhases(tx: DbLike, semesterId: number): SemesterPhasesRe
 
   const problems: string[] = []
   const active: { load: typeof teachingLoad.$inferSelect; resolved: ResolvedLoadWeeks; label: string }[] = []
-  for (const load of tx.select().from(teachingLoad).where(and(eq(teachingLoad.semesterId, semesterId), isNull(teachingLoad.validTo))).all()) {
+  // Недели «сначала лекции» (решение 53): практика встаёт в фазы после лекций своей дисциплины.
+  for (const load of effectiveSemesterLoads(tx, sem)) {
     const target = load.groupId != null ? (groups.get(load.groupId) ?? `группа #${load.groupId}`) : (streams.get(load.streamId!) ?? `поток #${load.streamId}`)
     const label = `«${disciplineOfRow.get(load.curriculumRowId) ?? `строка плана #${load.curriculumRowId}`}» (${target}, ${KIND_RU[load.lessonKind]})`
     try {

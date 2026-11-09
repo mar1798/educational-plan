@@ -92,12 +92,32 @@ describe('нагрузка: квалификация, недельный лим�
 
   it('недельный лимит проверяется по каждой неделе: пересечение лекций и практики даёт пик выше среднего', () => {
     ctx.db.insert(schema.teacherQualification).values({ teacherId: world.teacherId, disciplineId: world.disciplineId, validFrom: '2020-01-01' }).run()
-    // теория 36 ч по 2 ч/нед на 18 недель, практика с 4-й недели по 40 ч/нед на 2 недели: в неделях 4–5 будет 42 ч
-    saveTeachingLoad(ctx.db, { ...baseInput(world), hoursPlanned: 36 }, '2026-09-01', null)
+    // теория 36 ч по 2 ч/нед на 18 недель (задано руками — иначе лекции встали бы до практики, решение 53),
+    // практика с 4-й недели по 40 ч/нед на 2 недели: в неделях 4–5 будет 42 ч
+    saveTeachingLoad(ctx.db, { ...baseInput(world), hoursPlanned: 36, weekTo: 18 }, '2026-09-01', null)
     const practice = { ...baseInput(world), lessonKind: 'practice' as const, hoursPlanned: 80, hoursPerWeek: 40 }
     expect(() => saveTeachingLoad(ctx.db, practice, '2026-09-01', null)).not.toThrow()
     // ещё 4 ч в неделю с 4-й недели: 2 + 40 + 4 = 46 > 45, хотя за семестр суммарно далеко до 810 ч
     expect(() => saveTeachingLoad(ctx.db, { ...practice, hoursPerWeek: 4, hoursPlanned: 4 }, '2026-09-01', null)).toThrow(/в неделе 4 будет 46 ч/)
+  })
+
+  it('правка группы, сдвигающая недели соседа по потоку, проверяет его недельный лимит (решение 53)', () => {
+    ctx.db.insert(schema.teacherQualification).values({ teacherId: world.teacherId, disciplineId: world.disciplineId, validFrom: '2020-01-01' }).run()
+    const groupB = ctx.db
+      .insert(schema.studyGroup)
+      .values({ name: '12 СД', specialityId: world.specialityId, admissionYear: 2026, course: 1, studentsCount: 20, funding: 'budget', validFrom: '2026-01-01' })
+      .returning({ id: schema.studyGroup.id })
+      .get().id
+    const streamId = ctx.db.insert(schema.stream).values({ semesterId: world.semesterId, name: 'Поток', validFrom: '2026-09-01' }).returning({ id: schema.stream.id }).get().id
+    for (const g of [world.groupId, groupB]) ctx.db.insert(schema.streamMember).values({ streamId, groupId: g, validFrom: '2026-09-01' }).run()
+    const row = { semesterId: world.semesterId, curriculumRowId: world.curriculumRowId, teacherId: world.teacherId, validFrom: '2026-09-01' }
+    // Лекция потока 36 ч, у каждой группы практика 36 ч → лекции нед. 1–9 по 4 ч; у группы B ещё 40 ч/нед.
+    ctx.db.insert(schema.teachingLoad).values({ ...row, streamId, lessonKind: 'theory', hoursPlanned: 36 }).run()
+    ctx.db.insert(schema.teachingLoad).values({ ...row, groupId: groupB, lessonKind: 'practice', hoursPlanned: 36 }).run()
+    ctx.db.insert(schema.teachingLoad).values({ ...row, groupId: groupB, lessonKind: 'seminar', hoursPlanned: 720, hoursPerWeek: 40 }).run()
+    saveTeachingLoad(ctx.db, { ...baseInput(world), lessonKind: 'practice', hoursPlanned: 36 }, '2026-09-01', null)
+    // Большая практика группы A сжимает лекцию потока в нед. 1–3 по 12 ч: у B 12 + 40 = 52 > 45.
+    expect(() => saveTeachingLoad(ctx.db, { ...baseInput(world), lessonKind: 'practice', hoursPlanned: 180 }, '2026-09-01', null)).toThrow(/у группы «12 СД» сдвинутся недели/)
   })
 
   it('неделя окончания за пределами семестра — ошибка с русским текстом', () => {

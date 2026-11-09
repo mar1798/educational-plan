@@ -8,10 +8,10 @@
  * и теория, и практика.
  */
 import { and, eq, isNull } from 'drizzle-orm'
-import { hoursInWeek, resolveLoadWeeks, type LoadWeeksInput, type SemesterWeeksContext } from '../../shared/load/weeks'
+import { hoursInWeek, lectureFirstWeeks, resolveLoadWeeks, type LoadWeeksInput, type SemesterWeeksContext } from '../../shared/load/weeks'
 import type { LectureCoverageItem, LectureCoverageDraft, LectureHoursSuggestion } from '../../shared/ipc/contract'
 import { NotFoundError } from '../db/repo/base-repo'
-import { activeGroupLoads, groupHoursByWeek, weeksContextOf } from '../db/repo/teaching-load'
+import { effectiveSemesterLoads, groupHoursByWeek, loadGroupsResolver, weeksContextOf } from '../db/repo/teaching-load'
 import type { DbLike } from '../db/repo/types'
 import { appSetting } from '../db/schema/app-setting'
 import { semester } from '../db/schema/calendar'
@@ -53,7 +53,8 @@ function applyDraft(loads: LoadRow[], draft: LectureCoverageDraft | undefined, s
 
 interface Pair {
   key: string
-  groupId: number | null
+  groupId: number
+  /** Поток, которому читается лекция этой группы; null — лекция у группы своя. */
   streamId: number | null
   curriculumRowId: number
   theory: LoadRow[]
@@ -68,14 +69,22 @@ function safeResolve(l: LoadWeeksInput, ctx: SemesterWeeksContext) {
   }
 }
 
-function collectPairs(loads: LoadRow[]): Pair[] {
+/**
+ * Пары «группа × строка плана». Ключ — группа, а не цель строки: лекция потока и практика группы
+ * относятся к одной дисциплине группы, а по цели (`g…`/`s…`) они расходились по разным парам, и
+ * после объединения лекций в потоки (решение 54) проверка молча выключалась.
+ */
+function collectPairs(loads: LoadRow[], groupsOf: (l: LoadRow) => number[]): Pair[] {
   const pairs = new Map<string, Pair>()
   for (const l of loads) {
     if (l.lessonKind !== 'theory' && l.lessonKind !== 'practice') continue
-    const key = `${l.groupId != null ? `g${l.groupId}` : `s${l.streamId}`}:${l.curriculumRowId}`
-    const pair = pairs.get(key) ?? { key, groupId: l.groupId, streamId: l.streamId, curriculumRowId: l.curriculumRowId, theory: [], practice: [] }
-    ;(l.lessonKind === 'theory' ? pair.theory : pair.practice).push(l)
-    pairs.set(key, pair)
+    for (const g of new Set(groupsOf(l))) {
+      const key = `${g}:${l.curriculumRowId}`
+      const pair = pairs.get(key) ?? { key, groupId: g, streamId: null, curriculumRowId: l.curriculumRowId, theory: [], practice: [] }
+      if (l.streamId != null && l.lessonKind === 'theory') pair.streamId = l.streamId
+      ;(l.lessonKind === 'theory' ? pair.theory : pair.practice).push(l)
+      pairs.set(key, pair)
+    }
   }
   return [...pairs.values()]
 }
@@ -110,11 +119,15 @@ export function lectureCoverage(
   const ctx = weeksContextOf(sem)
   const threshold = lectureCoverageThreshold(tx)
 
-  const loads = applyDraft(
+  // Сначала черновик, потом расстановка «сначала лекции» (решение 53): предупреждение остаётся
+  // только там, где недели заданы руками и правилу противоречат.
+  const drafted = applyDraft(
     tx.select().from(teachingLoad).where(and(eq(teachingLoad.semesterId, params.semesterId), isNull(teachingLoad.validTo))).all(),
     params.draft,
     params.semesterId,
   )
+  const groupsOf = loadGroupsResolver(tx)
+  const loads = lectureFirstWeeks(drafted, groupsOf, ctx)
 
   const groups = new Map(tx.select().from(studyGroup).all().map((g) => [g.id, g.name]))
   const streams = new Map(tx.select().from(stream).all().map((s) => [s.id, s.name]))
@@ -128,9 +141,9 @@ export function lectureCoverage(
   )
 
   const items: LectureCoverageItem[] = []
-  for (const pair of collectPairs(loads)) {
+  for (const pair of collectPairs(loads, groupsOf)) {
     if (params.groupId != null && pair.groupId !== params.groupId) continue
-    if (params.streamId != null && pair.streamId !== params.streamId) continue
+    if (params.streamId != null && ![...pair.theory, ...pair.practice].some((l) => l.streamId === params.streamId)) continue
     if (pair.theory.length === 0 || pair.practice.length === 0) continue
 
     const startWeek = practiceStart(pair, ctx)
@@ -142,7 +155,8 @@ export function lectureCoverage(
     const percent = Math.round((coveredHours / totalHours) * 100)
     const ok = (coveredHours / totalHours) * 100 >= threshold
     const disciplineName = rowDiscipline.get(pair.curriculumRowId) ?? `строка плана #${pair.curriculumRowId}`
-    const targetLabel = pair.groupId != null ? (groups.get(pair.groupId) ?? `группа #${pair.groupId}`) : (streams.get(pair.streamId!) ?? `поток #${pair.streamId}`)
+    const groupLabel = groups.get(pair.groupId) ?? `группа #${pair.groupId}`
+    const targetLabel = pair.streamId != null ? `${groupLabel} (поток «${streams.get(pair.streamId) ?? `#${pair.streamId}`}»)` : groupLabel
 
     items.push({
       groupId: pair.groupId,
@@ -175,20 +189,31 @@ export function suggestLectureHours(tx: DbLike, params: { semesterId: number; dr
 
   if (draft.lessonKind !== 'theory') return { hoursPerWeek: null, fits: true, shortfall: 0, message: 'Подбор нужен только для теоретических занятий' }
 
-  const loads = tx.select().from(teachingLoad).where(and(eq(teachingLoad.semesterId, params.semesterId), isNull(teachingLoad.validTo))).all()
-  // Без самой редактируемой строки: подбираем её вклад поверх остальных.
-  const others = loads.filter((l) => l.id !== draft.id)
-  const pair = collectPairs(others).find((p) => p.curriculumRowId === draft.curriculumRowId && p.groupId === (draft.groupId ?? null) && p.streamId === (draft.streamId ?? null))
+  // Без самой редактируемой строки: подбираем её вклад поверх остальных. Недели остальных — те же,
+  // что получит генерация (решение 53), иначе подсказка и расписание расходились бы.
+  const others = effectiveSemesterLoads(tx, sem, { excludeId: draft.id })
+  const groupsOf = loadGroupsResolver(tx)
+  const draftGroups = draft.groupId != null ? [draft.groupId] : streamGroupIds(tx, draft.streamId!)
+  const pairs = collectPairs(others, groupsOf).filter((p) => p.curriculumRowId === draft.curriculumRowId && draftGroups.includes(p.groupId))
 
-  const practiceStarts = (pair?.practice ?? []).map((p) => safeResolve(p, ctx)?.weekFrom).filter((w): w is number => w != null)
-  if (practiceStarts.length === 0) return { hoursPerWeek: null, fits: true, shortfall: 0, message: 'У этой дисциплины нет практики — подбирать нечего' }
-  const startWeek = Math.min(...practiceStarts)
+  const practice = pairs.flatMap((p) => p.practice)
+  if (practice.length === 0) return { hoursPerWeek: null, fits: true, shortfall: 0, message: 'У этой дисциплины нет практики — подбирать нечего' }
+  // Практика без заданного начала сама встанет после лекций (решение 53): подбирать нечего.
+  // В `others` начало практики могло проставить правило — явное берём из сохранённой строки.
+  const savedWeekFrom = new Map(
+    tx.select({ id: teachingLoad.id, weekFrom: teachingLoad.weekFrom }).from(teachingLoad).where(eq(teachingLoad.semesterId, params.semesterId)).all().map((r) => [r.id, r.weekFrom]),
+  )
+  const explicitStarts = practice.map((p) => savedWeekFrom.get(p.id)).filter((w): w is number => w != null)
+  if (explicitStarts.length === 0) {
+    return { hoursPerWeek: null, fits: true, shortfall: 0, message: 'Начало практики не задано — программа поставит её после лекций сама, подбирать не нужно' }
+  }
+  const startWeek = Math.min(...explicitStarts)
 
   const first = draft.weekFrom ?? 1
   const weeksBefore = startWeek - first
   if (weeksBefore < 1) return { hoursPerWeek: null, fits: false, shortfall: 0, message: `Практика начинается с ${startWeek}-й недели — до неё лекциям не остаётся недель` }
 
-  const otherTheory = wholeTheory(pair?.theory ?? [])
+  const otherTheory = wholeTheory([...new Set(pairs.flatMap((p) => p.theory))])
   const total = otherTheory.reduce((s, l) => s + l.hoursPlanned, 0) + draft.hoursPlanned
   const needed = Math.ceil((total * threshold) / 100) - coveredBefore(otherTheory, ctx, startWeek)
   const perWeek = Math.max(2, Math.ceil(Math.max(0, needed) / weeksBefore / 2) * 2)
@@ -196,11 +221,10 @@ export function suggestLectureHours(tx: DbLike, params: { semesterId: number; dr
 
   // Недельный лимит каждой группы цели на неделях до практики.
   let shortfall = 0
-  const groupsToCheck = draft.groupId != null ? [draft.groupId] : streamGroupIds(tx, draft.streamId!)
-  for (const gid of groupsToCheck) {
+  for (const gid of draftGroups) {
     const group = tx.select().from(studyGroup).where(eq(studyGroup.id, gid)).get()
     if (!group) continue
-    const rest = activeGroupLoads(tx, gid, params.semesterId, draft.id).filter((l) => safeResolve(l, ctx) != null)
+    const rest = others.filter((l) => groupsOf(l).includes(gid) && safeResolve(l, ctx) != null)
     const byWeek = groupHoursByWeek(rest, ctx)
     for (let w = first; w < startWeek; w++) shortfall = Math.max(shortfall, Math.ceil(byWeek[w - 1]! + hoursPerWeek - group.maxHoursPerWeek))
   }

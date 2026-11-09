@@ -21,7 +21,8 @@ const KIND_LABEL: Record<TeachingLoad['lessonKind'], string> = {
 
 /**
  * Мини-полоса недель 1..N (§этап В): сразу видно, что лекции идут в начале семестра, а практика после.
- * Недели считает та же функция, что и main, — полоса не расходится с проверкой лимита и генерацией.
+ * Недели считает та же функция, что и main, а умолчания «сначала лекции» приходят из main —
+ * полоса не расходится с проверкой лимита и генерацией.
  */
 function WeeksStrip({ load, semester }: { load: TeachingLoad; semester: Semester | undefined }) {
   if (!semester) return null
@@ -41,7 +42,8 @@ function WeeksStrip({ load, semester }: { load: TeachingLoad; semester: Semester
 
 function tryResolveWeeks(load: TeachingLoad, semester: Semester) {
   try {
-    return resolveLoadWeeks(load, semester)
+    // Недели, выбранные правилом «сначала лекции», присылает main (решение 53); здесь только рисуем.
+    return resolveLoadWeeks({ ...load, weekFrom: load.weekFrom ?? load.autoWeekFrom, weekTo: load.weekTo ?? load.autoWeekTo }, semester)
   } catch {
     return null // строка с устаревшими неделями (семестр сократили) не должна ронять таблицу
   }

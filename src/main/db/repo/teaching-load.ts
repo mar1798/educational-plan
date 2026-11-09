@@ -1,5 +1,5 @@
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm'
-import { hoursInWeek, resolveLoadWeeks, type LoadWeeksInput, type SemesterWeeksContext } from '../../../shared/load/weeks'
+import { hoursInWeek, lectureFirstWeeks, resolveLoadWeeks, type LoadWeeksInput, type SemesterWeeksContext, type SequencedLoadInput } from '../../../shared/load/weeks'
 import { curriculum, curriculumRow } from '../schema/curriculum'
 import { stream, streamMember, teachingLoad } from '../schema/load'
 import { divisionScheme, studyGroup, subgroup, teacher, teacherQualification } from '../schema/people'
@@ -58,6 +58,39 @@ type SemesterRow = typeof semester.$inferSelect
 
 export function weeksContextOf(sem: SemesterRow): SemesterWeeksContext {
   return { weeksCount: sem.weeksCount, practiceStartWeek: sem.practiceStartWeek }
+}
+
+type LoadRow = typeof teachingLoad.$inferSelect
+
+/** Группы, которые слушают строку: своя группа или действующие участники потока. */
+export function loadGroupsResolver(tx: DbLike): (load: { groupId: number | null; streamId: number | null }) => number[] {
+  const members = new Map<number, number[]>()
+  for (const m of tx.select().from(streamMember).where(isNull(streamMember.validTo)).all()) {
+    members.set(m.streamId, [...(members.get(m.streamId) ?? []), m.groupId])
+  }
+  return (l) => (l.groupId != null ? [l.groupId] : (members.get(l.streamId!) ?? []))
+}
+
+/**
+ * Действующие строки нагрузки семестра с неделями «сначала лекции» (решение 53). Все, кто считает
+ * недели (снимок солвера, фазы, лимит, раскатка, проверка лекций), обязаны брать строки отсюда —
+ * иначе фаза и снимок разойдутся в том, где идёт практика.
+ *
+ * `excludeId` убирает сохранённую версию правимой строки, `extra` добавляет черновик: так проверка
+ * лимита при сохранении видит ту же расстановку, что получит генерация.
+ */
+export function effectiveSemesterLoads<T extends SequencedLoadInput & { id: number; groupId: number | null; streamId: number | null } = LoadRow>(
+  tx: DbLike,
+  sem: SemesterRow,
+  opts: { excludeId?: number; extra?: T[] } = {},
+): T[] {
+  const saved = tx
+    .select()
+    .from(teachingLoad)
+    .where(and(eq(teachingLoad.semesterId, sem.id), isNull(teachingLoad.validTo)))
+    .all()
+    .filter((l) => l.id !== opts.excludeId) as unknown as T[]
+  return lectureFirstWeeks([...saved, ...(opts.extra ?? [])], loadGroupsResolver(tx), weeksContextOf(sem))
 }
 
 /**
@@ -154,8 +187,17 @@ export function saveTeachingLoad(
 
   // Недельный лимит (п. 20) проверяется по каждой неделе отдельно: у группы с лекциями и практикой
   // в одной фазе нагрузка выше средней, и сумма за семестр этого не показывает.
-  for (const group of targetGroups) {
-    const all = [...activeGroupLoads(tx, group.id, input.semesterId, existing?.id), input].filter((l) => {
+  // Недели берутся с расстановкой «сначала лекции» по всему семестру (решение 53): иначе проверка
+  // видела бы лекции на 18 неделях, а генерация — сжатыми в начало, и лимит считался бы не о том.
+  const draftId = -1
+  const groupsOf = loadGroupsResolver(tx)
+  const before = effectiveSemesterLoads(tx, sem)
+  const after = effectiveSemesterLoads(tx, sem, { excludeId: existing?.id, extra: [{ ...input, id: draftId } as unknown as LoadRow] })
+  const draftGroupIds = new Set(targetGroups.map((g) => g.id))
+  const belongs = (l: LoadRow, groupId: number) => (l.id === draftId ? draftGroupIds.has(groupId) : groupsOf(l).includes(groupId))
+  const peakOf = (loads: LoadRow[], groupId: number) => {
+    const resolvable = loads.filter((l) => {
+      if (!belongs(l, groupId)) return false
       try {
         resolveLoadWeeks(l, weeksCtx)
         return true
@@ -163,11 +205,36 @@ export function saveTeachingLoad(
         return false // уже сохранённая строка с устаревшими неделями не должна блокировать правку другой
       }
     })
-    const byWeek = groupHoursByWeek(all, weeksCtx)
+    const byWeek = groupHoursByWeek(resolvable, weeksCtx)
     const peak = Math.max(...byWeek)
+    return { peak, week: byWeek.indexOf(peak) + 1 }
+  }
+
+  for (const group of targetGroups) {
+    const { peak, week } = peakOf(after, group.id)
     if (peak > group.maxHoursPerWeek) {
-      const week = byWeek.indexOf(peak) + 1
       throw new LoadValidationError(`Группа «${group.name}» выйдет за недельный лимит ${group.maxHoursPerWeek} ч: в неделе ${week} будет ${Math.round(peak * 10) / 10} ч`)
+    }
+  }
+
+  // Правка одной группы может сдвинуть недели соседей по потоку: лекция потока заканчивается раньше
+  // или позже, и с ней — их практика. Таких соседей тоже проверяем, но только на ухудшение: давнее
+  // превышение у чужой группы не повод отказывать в правке этой.
+  const beforeById = new Map(before.map((l) => [l.id, l]))
+  const shifted = new Set<number>()
+  for (const l of after) {
+    const b = beforeById.get(l.id)
+    if (b && (b.weekFrom !== l.weekFrom || b.weekTo !== l.weekTo)) for (const g of groupsOf(l)) shifted.add(g)
+  }
+  for (const gid of shifted) {
+    if (draftGroupIds.has(gid)) continue
+    const group = tx.select().from(studyGroup).where(eq(studyGroup.id, gid)).get()
+    if (!group) continue
+    const now = peakOf(after, gid)
+    if (now.peak > group.maxHoursPerWeek && now.peak > peakOf(before, gid).peak) {
+      throw new LoadValidationError(
+        `Из-за этой правки у группы «${group.name}» сдвинутся недели (лекции идут раньше практики), и она выйдет за недельный лимит ${group.maxHoursPerWeek} ч: в неделе ${now.week} будет ${Math.round(now.peak * 10) / 10} ч`,
+      )
     }
   }
 

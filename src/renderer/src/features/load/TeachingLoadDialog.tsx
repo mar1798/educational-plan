@@ -148,8 +148,18 @@ export function TeachingLoadDialog({
     if (!semester || !(hoursPlanned > 0)) return null
     try {
       const input = { lessonKind, hoursPlanned, weekFrom: toWeek(weekFrom), weekTo: toWeek(weekTo), hoursPerWeek: toWeek(hoursPerWeek) }
-      const resolved = resolveLoadWeeks(input, semester)
-      return { text: describeLoadWeeks(input, resolved), warnings: resolved.warnings, error: null }
+      // Без «с недели» и «по неделю» недели выбирает правило «сначала лекции» (решение 53). Его считает
+      // main и присылает в строке списка; пока вид и часы не менялись, показываем именно их.
+      const auto = input.weekFrom == null && input.weekTo == null && row?.autoWeekFrom != null && row.lessonKind === lessonKind && row.hoursPlanned === hoursPlanned
+      const shown = auto ? { ...input, weekFrom: row.autoWeekFrom, weekTo: row.autoWeekTo ?? null } : input
+      const resolved = resolveLoadWeeks(shown, semester)
+      resolveLoadWeeks(input, semester) // ошибки ввода показываем по тому, что ввёл человек
+      const note = auto
+        ? ' — выбрано программой: лекции раньше практики'
+        : input.weekFrom == null && input.weekTo == null && (lessonKind === 'theory' || lessonKind === 'practice')
+          ? ' (если у дисциплины есть и лекции, и практика, программа поставит лекции первыми)'
+          : ''
+      return { text: describeLoadWeeks(shown, resolved) + note, warnings: resolved.warnings, error: null }
     } catch (e) {
       if (e instanceof LoadWeeksError) return { text: '', warnings: [], error: e.message }
       throw e

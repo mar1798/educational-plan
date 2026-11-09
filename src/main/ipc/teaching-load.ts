@@ -25,11 +25,12 @@ import {
   teachingLoadSaveInput,
 } from '../../shared/ipc/schemas'
 import type { Db } from '../db/client'
+import { semester } from '../db/schema/calendar'
 import { createRow, deleteRow, updateRow } from '../db/repo/base-repo'
 import { ensureDeletable } from '../db/repo/reference-guard'
 import { runOperation } from '../db/repo/operations'
 import { createStream, disbandStream, listStreamsWithMembers } from '../db/repo/stream'
-import { loadBalanceByGroup, loadBalanceByTeacher, planRowOptions, saveTeachingLoad } from '../db/repo/teaching-load'
+import { effectiveSemesterLoads, loadBalanceByGroup, loadBalanceByTeacher, planRowOptions, saveTeachingLoad } from '../db/repo/teaching-load'
 import { teachingLoad } from '../db/schema/load'
 import { otherLoad } from '../db/schema/system'
 import { lesson, templateEntry } from '../db/schema/schedule'
@@ -39,7 +40,15 @@ import { handle } from './register'
 export function registerTeachingLoadHandlers(db: Db) {
   handle('teachingLoad:list', teachingLoadListInput, ({ semesterId }) => {
     const rows = db.select().from(teachingLoad).where(eq(teachingLoad.semesterId, semesterId)).all()
-    return rows as unknown as TeachingLoad[]
+    const sem = db.select().from(semester).where(eq(semester.id, semesterId)).get()
+    // У строки без заданных недель правило «сначала лекции» (решение 53) их выбрало само — экран
+    // показывает именно их, а не «на весь семестр».
+    const effective = new Map(sem ? effectiveSemesterLoads(db, sem).map((l) => [l.id, l]) : [])
+    return rows.map((r) => {
+      // Без «с недели» и «по неделю» начало могло выбрать правило; заданные «часов в неделю» оно не трогает.
+      const e = r.weekFrom == null && r.weekTo == null ? effective.get(r.id) : undefined
+      return { ...r, autoWeekFrom: e?.weekFrom ?? null, autoWeekTo: e?.weekTo ?? null }
+    }) as unknown as TeachingLoad[]
   })
 
   handle('teachingLoad:save', teachingLoadSaveInput, ({ id, rowVersion, validFrom, ...fields }) => {

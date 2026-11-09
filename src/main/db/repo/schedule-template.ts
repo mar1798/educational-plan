@@ -4,6 +4,7 @@ import { findConflicts, type SlotEntry } from '../../../solver/validate'
 import type { AuditContext } from './audit'
 import { createRow, deleteRow, NotFoundError, OptimisticLockError, updateRow } from './base-repo'
 import { resolveLoadWeeks, type ResolvedLoadWeeks } from '../../../shared/load/weeks'
+import { effectiveSemesterLoads } from './teaching-load'
 import { studyWeeksOfSemester } from '../../services/study-weeks'
 import { ensureDeletable } from './reference-guard'
 import type { DbLike } from './types'
@@ -717,8 +718,10 @@ export function planRollout(tx: DbLike, input: { templateId: number; dateFrom: s
   // даже если версию поправили руками. Каникулярные недели номера не имеют и сюда не попадают.
   const weekNoByMonday = new Map(studyWeeksOfSemester(tx, sem.id).map((w) => [w.monday, w.no]))
   const loadWeeks = new Map<number, ResolvedLoadWeeks>()
+  // Недели «сначала лекции» (решение 53) — те же, по которым строились фазы.
+  const effective = new Map(effectiveSemesterLoads(tx, sem).map((l) => [l.id, l]))
   for (const loadId of new Set(entries.map((e) => e.teachingLoadId))) {
-    const load = tx.select().from(teachingLoad).where(eq(teachingLoad.id, loadId)).get()
+    const load = effective.get(loadId) ?? tx.select().from(teachingLoad).where(eq(teachingLoad.id, loadId)).get()
     if (!load) continue
     try {
       loadWeeks.set(loadId, resolveLoadWeeks(load, { weeksCount: sem.weeksCount, practiceStartWeek: sem.practiceStartWeek }))

@@ -331,7 +331,8 @@ export function GenerationPage() {
 
       {!generating && draft == null && coverageWarnings.length > 0 && (
         <div className="card">
-          <strong>Практика раньше, чем пройдены лекции</strong> — это рекомендация, генерации она не мешает:
+          <strong>Практика раньше, чем пройдены лекции</strong> — у этих дисциплин часть недель задана вручную, и программа
+          их не переставляет (если недели не задавать, лекции сами идут первыми):
           <ul>
             {coverageWarnings.map((i) => (
               <li key={`${i.groupId}-${i.streamId}-${i.curriculumRowId}`}>{i.message}</li>

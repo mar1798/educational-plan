@@ -90,3 +90,124 @@ export function describeLoadWeeks(load: LoadWeeksInput, resolved: ResolvedLoadWe
   }
   return text
 }
+
+/**
+ * Строка нагрузки для расстановки «сначала лекции, потом практика» (решение 53). `groupIds` —
+ * группы, которые слушают строку: у потоковой лекции их несколько, а практика обычно у каждой
+ * группы своя — сопоставлять теорию с практикой по «цели» (группа/поток) поэтому нельзя.
+ */
+export interface SequencedLoadInput extends LoadWeeksInput {
+  curriculumRowId: number
+  subgroupId?: number | null
+}
+
+/** Недели не заданы ни одним полем — программа вправе выбрать их сама. */
+export function hasAutoWeeks(load: LoadWeeksInput): boolean {
+  return load.weekFrom == null && load.weekTo == null && load.hoursPerWeek == null
+}
+
+function tryResolve(load: LoadWeeksInput, ctx: SemesterWeeksContext): ResolvedLoadWeeks | null {
+  try {
+    return resolveLoadWeeks(load, ctx)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Начало практики программа вправе выбрать сама, если человек не задал ни «с недели», ни «по неделю».
+ * Заданные «часов в неделю» — это интенсивность, а не начало: такая практика тоже сдвигается.
+ */
+function hasMovableStart(load: LoadWeeksInput): boolean {
+  return load.weekFrom == null && load.weekTo == null
+}
+
+/**
+ * Недели по умолчанию с учётом правила «практика — после лекций» (решение 53, развивает п. 51).
+ *
+ * Прежний умолчательный режим растягивал лекции на весь семестр, а практику пускал с недели
+ * практики: к её началу было пройдено 3/18 лекций, и солвер ставил практику, пока лекции шли
+ * полным ходом. Теперь у пары «группа × строка плана», где есть и теория, и практика:
+ *
+ * - теория без заданных недель идёт с 1-й недели по T-ю, где T делит семестр пропорционально
+ *   часам теории и практики — недельная нагрузка дисциплины остаётся примерно ровной;
+ * - практика без заданного начала идёт со следующей недели после конца теории (но не раньше
+ *   недели практики семестра);
+ * - заданное человеком не трогается: явное начало практики задаёт конец теории, явная теория —
+ *   начало практики. Если явная практика начинается раньше недели практики семестра, теорию не
+ *   сжимаем в одну-две недели — оставляем как есть, и расхождение показывает `lecture-coverage`.
+ *
+ * Возвращает копии строк, где у сдвинутых заполнены недели, — дальше их читает обычный
+ * `resolveLoadWeeks`. Порядок и прочие поля сохраняются.
+ */
+export function lectureFirstWeeks<T extends SequencedLoadInput>(loads: T[], groupsOf: (load: T) => number[], ctx: SemesterWeeksContext): T[] {
+  const practiceFloor = ctx.practiceStartWeek ?? DEFAULT_PRACTICE_START_WEEK
+  const n = ctx.weeksCount
+  // Неделя практики за пределами семестра — ошибка настройки семестра; ничего не переставляем.
+  if (practiceFloor > n) return loads
+
+  const buckets = new Map<string, { theory: T[]; practice: T[] }>()
+  for (const l of loads) {
+    if (l.lessonKind !== 'theory' && l.lessonKind !== 'practice') continue
+    for (const g of new Set(groupsOf(l))) {
+      const key = `${g}:${l.curriculumRowId}`
+      const b = buckets.get(key) ?? { theory: [], practice: [] }
+      ;(l.lessonKind === 'theory' ? b.theory : b.practice).push(l)
+      buckets.set(key, b)
+    }
+  }
+
+  // Подгруппы одной дисциплины идут параллельно, а не друг за другом: к часам целой группы
+  // прибавляется самая длинная подгруппа, а не сумма подгрупп.
+  const hoursOf = (xs: T[]) => {
+    const whole = xs.filter((l) => l.subgroupId == null).reduce((s, l) => s + l.hoursPlanned, 0)
+    const sub = Math.max(0, ...xs.filter((l) => l.subgroupId != null).map((l) => l.hoursPlanned))
+    return whole + sub
+  }
+
+  // Проход 1: конец автоматической теории. Потоковая лекция входит в корзину каждой группы —
+  // берём самый РАННИЙ конец: практика каждой группы всё равно встаёт после фактического конца
+  // лекции (проход 2), а самый поздний перекрывал бы явную практику одной из групп и сжимал
+  // практику остальных.
+  const theoryTo = new Map<T, number>()
+  for (const b of buckets.values()) {
+    if (b.theory.length === 0 || b.practice.length === 0) continue
+    if (!b.theory.every(hasAutoWeeks)) continue
+    const explicitStarts = b.practice.filter((l) => l.weekFrom != null).map((l) => l.weekFrom!)
+    let end: number
+    if (explicitStarts.length > 0) {
+      end = Math.min(...explicitStarts) - 1
+      if (end < practiceFloor - 1) continue // сжали бы лекции в 1–2 недели — оставляем, предупредит lecture-coverage
+    } else {
+      const ht = hoursOf(b.theory)
+      const hp = hoursOf(b.practice)
+      if (ht + hp <= 0) continue
+      end = Math.min(n - 1, Math.max(practiceFloor - 1, Math.round((n * ht) / (ht + hp))))
+    }
+    for (const l of b.theory) theoryTo.set(l, Math.min(theoryTo.get(l) ?? Infinity, end))
+  }
+
+  // Проход 2: начало практики без заданного начала — после фактического конца теории группы.
+  const practiceFrom = new Map<T, number>()
+  for (const b of buckets.values()) {
+    if (b.theory.length === 0 || b.practice.length === 0) continue
+    const ends = b.theory.map((l) => theoryTo.get(l) ?? tryResolve(l, ctx)?.weekTo).filter((w): w is number => w != null)
+    if (ends.length === 0) continue
+    const start = Math.max(practiceFloor, Math.max(...ends) + 1)
+    if (start > n) continue // лекции заняли весь семестр (заданы руками) — предупредит lecture-coverage
+    for (const l of b.practice) {
+      if (!hasMovableStart(l)) continue
+      // С заданной интенсивностью практика должна уместиться до конца семестра — иначе не двигаем.
+      if (l.hoursPerWeek != null && l.hoursPerWeek > 0 && start + Math.ceil(l.hoursPlanned / l.hoursPerWeek) - 1 > n) continue
+      practiceFrom.set(l, Math.max(practiceFrom.get(l) ?? 0, start))
+    }
+  }
+
+  return loads.map((l) => {
+    const to = theoryTo.get(l)
+    if (to != null) return { ...l, weekFrom: 1, weekTo: to }
+    const from = practiceFrom.get(l)
+    if (from != null) return { ...l, weekFrom: from }
+    return l
+  })
+}

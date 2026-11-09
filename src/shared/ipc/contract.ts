@@ -326,6 +326,12 @@ export interface TeachingLoad {
   weekFrom: number | null
   weekTo: number | null
   hoursPerWeek: number | null
+  /**
+   * Недели, которые программа выбрала сама по правилу «сначала лекции» (решение 53), когда
+   * завуч их не задал; null — правило строку не затронуло. Считает main, экран только рисует.
+   */
+  autoWeekFrom?: number | null
+  autoWeekTo?: number | null
   sessionHours: 2 | 4 | 6
   requiresParallel: boolean
   pairedLoadId: number | null

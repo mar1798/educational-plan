@@ -20,11 +20,13 @@ describe('фазы семестра и генерация по фазам (эт�
   beforeEach(() => {
     ctx = createTestDb()
     world = seedMinimalWorld(ctx.db)
-    // Теория 36 ч в неделях 1–5 по 8 ч/нед, практика 30 ч с 4-й недели (неделя практики по умолчанию).
+    // Теория 36 ч в неделях 1–5 по 8 ч/нед, практика 30 ч с 4-й недели. Начало практики задано
+    // руками: без него правило «сначала лекции» (решение 53) сдвинуло бы её на 6-ю, а здесь
+    // проверяется механика фаз на перекрытии лекций и практики.
     ctx.db.update(schema.teachingLoad).set({ lessonKind: 'theory', hoursPlanned: 36, hoursPerWeek: 8 }).where(eq(schema.teachingLoad.id, world.teachingLoadId)).run()
     practiceId = ctx.db
       .insert(schema.teachingLoad)
-      .values({ semesterId: world.semesterId, curriculumRowId: world.curriculumRowId, teacherId: world.teacherId2, groupId: world.groupId, lessonKind: 'practice', hoursPlanned: 30, validFrom: '2026-09-01' })
+      .values({ semesterId: world.semesterId, curriculumRowId: world.curriculumRowId, teacherId: world.teacherId2, groupId: world.groupId, lessonKind: 'practice', hoursPlanned: 30, weekFrom: 4, validFrom: '2026-09-01' })
       .returning({ id: schema.teachingLoad.id })
       .get().id
   })

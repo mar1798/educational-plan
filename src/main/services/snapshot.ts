@@ -18,7 +18,7 @@ import { resolveLoadWeeks, type ResolvedLoadWeeks } from '../../shared/load/week
 import { NotFoundError } from '../db/repo/base-repo'
 import { loadWeights } from '../db/repo/constraint-weights'
 import { resolveEntryAttendees } from '../db/repo/schedule-template'
-import { weeksContextOf } from '../db/repo/teaching-load'
+import { effectiveSemesterLoads, weeksContextOf } from '../db/repo/teaching-load'
 import { loadCoversWeeks } from './semester-phases'
 import type { DbLike } from '../db/repo/types'
 
@@ -185,20 +185,18 @@ export function buildSolverInput(tx: DbLike, templateId: number, seed = Date.now
     return out
   }
 
+  // Недели — с расстановкой «сначала лекции» (решение 53), той же, что строит фазы.
+  const semesterLoads = effectiveSemesterLoads(tx, sem)
+
   function activeLoadsInPhase() {
     const ctx = weeksContextOf(sem!)
-    return tx
-      .select()
-      .from(teachingLoad)
-      .where(and(eq(teachingLoad.semesterId, tmpl!.semesterId), isNull(teachingLoad.validTo)))
-      .all()
-      .filter((l) => {
-        try {
-          return loadCoversWeeks(resolveLoadWeeks(l, ctx), weekRange!.from, weekRange!.to)
-        } catch {
-          return false // неверные недели видны в отчёте по фазам; в снимок такая строка не идёт
-        }
-      })
+    return semesterLoads.filter((l) => {
+      try {
+        return loadCoversWeeks(resolveLoadWeeks(l, ctx), weekRange!.from, weekRange!.to)
+      } catch {
+        return false // неверные недели видны в отчёте по фазам; в снимок такая строка не идёт
+      }
+    })
   }
 
   // ── уже стоящие (is_locked=1) записи шаблона — препятствия, не входят в units.
@@ -293,7 +291,7 @@ export function buildSolverInput(tx: DbLike, templateId: number, seed = Date.now
   }
 
   // ── недостающая нагрузка семестра → units (§5.2).
-  const loads = weekRange ? activeLoadsInPhase() : tx.select().from(teachingLoad).where(and(eq(teachingLoad.semesterId, tmpl.semesterId), isNull(teachingLoad.validTo))).all()
+  const loads = weekRange ? activeLoadsInPhase() : semesterLoads
 
   const units: Unit[] = []
   const unitIdsByLoad = new Map<number, number[]>()
